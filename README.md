@@ -191,8 +191,9 @@ src/
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | 架构设计 |
 | [`docs/API.md`](docs/API.md) | API 文档 |
 | [`docs/AUTH.md`](docs/AUTH.md) | 登录策略白皮书 |
-| [`docs/PERF.md`](docs/PERF.md) | 性能优化报告 |
+| [`docs/STRATEGY.md`](docs/STRATEGY.md) | 完整性能策略与架构白皮书 |
 | [`docs/LOADING.md`](docs/LOADING.md) | 加载速度优化策略 |
+| [`docs/PERF.md`](docs/PERF.md) | 性能优化报告 |
 | [`CHANGELOG.md`](CHANGELOG.md) | 完整版本历史 |
 | [`docs/MASTER.md`](docs/MASTER.md) | 多板块接入总览 |
 | [`docs/QUICKSTART.md`](docs/QUICKSTART.md) | 快速开始 |
