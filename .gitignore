@@ -1,0 +1,51 @@
+node_modules/
+.next/
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.env
+.env.local
+.turbo
+dev.log
+console.log*
+*/check-*.js
+
+# Junk in docs/
+/docs/OemWin2k.inf
+/docs/addtap.bat
+/docs/deltapall.bat
+/docs/tap0901.cat
+
+# Junk in root
+/nnndisfilter.cat
+/nnndisfilter.sys
+/nnndisfilter_lwf.inf
+
+# Junk in src/
+/src/*.js
+/src/app/api/**/download*.png
+/src/app/api/**/loading*.png
+/src/app/api/**/logo*.png
+/src/app/api/**/*.png
+/src/app/api/**/*.js
+/src/app/api/**/*.ico
+/src/app/api/**/*.dll
+/src/app/api/**/config.json
+/src/app/forum/*.pak
+/src/app/forum/**/*.dll
+/src/app/forum/**/*.reg
+/src/app/api/**/*.pak
+/src/components/*.exe
+/src/components/*.dll
+/src/components/**/*.inf
+/src/components/**/*.cat
+/src/components/**/*.txt
+/src/components/**/*.bytes
+/src/lib/**/*.bytes
+/src/lib/scraper/*.txt
+
+# Build output CSS/JS in src/app/ (hash-named like 0289577e637070da.css)
+/src/app/[0-9a-f]*.css
+/src/app/[0-9a-f]*.js

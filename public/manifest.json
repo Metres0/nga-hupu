@@ -1,0 +1,8 @@
+{
+  "name": "NGA 镜像站",
+  "short_name": "NGA镜像",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fefefe",
+  "theme_color": "#1565c0"
+}
