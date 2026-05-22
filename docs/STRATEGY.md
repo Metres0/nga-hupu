@@ -1,93 +1,147 @@
-# NGA 镜像站 — 完整性能策略与架构白皮书 v1.0
+# NGA 镜像站 — 完整性能策略与架构白皮书 v2.0
 
 > 最后更新: 2026-05-22 | 涵盖: 缓存 / 加载 / 渲染 / 网络 / DB / 监控
+> v2.0 变更: 补充 L1/L2 错开机制 + 骨架屏方案 + 缓存隔离分析 + 架构依赖验证
 
 ---
 
 ## 目录
 
-1. [架构总览](#一架构总览)
-2. [缓存策略 (3 层)](#二缓存策略)
-3. [加载策略 (5 阶段)](#三加载策略)
+1. [架构总览与关键变量](#一架构总览与关键变量)
+2. [缓存策略 (L1/L2/L3 错开机制)](#二缓存策略)
+3. [零 Spinner + 渐进加载的骨架屏方案](#三零-spinner--渐进加载方案)
 4. [渲染策略](#四渲染策略)
 5. [网络与 API 策略](#五网络与-api-策略)
-6. [数据库策略](#六数据库策略)
-7. [代码分割策略](#七代码分割策略)
+6. [数据库策略 (WAL 安全边界)](#六数据库策略)
+7. [代码分割与请求合并非冲突设计](#七代码分割与请求合并)
 8. [监控与度量](#八监控与度量)
-9. [实施路线图](#九实施路线图)
+9. [实施路线图 (含依赖验证)](#九实施路线图)
 
 ---
 
-## 一、架构总览
+## 一、架构总览与关键变量
+
+### 1.1 已验证的架构前提
+
+| 组件 | 实际状态 (代码验证) | 策略依赖 |
+|------|---------------------|----------|
+| `forum/[fid]/page.tsx` | **已是 Server Component** — `export default async function ForumPage()` | Phase A2 依赖 ✅ |
+| `thread/[tid]/page.tsx` | **已是 Server Component** — `export default async function ThreadPage()` | Phase A2 依赖 ✅ |
+| `BottomNav.tsx` | **使用 `<a href>` 非 `<Link>`** — 行 58-63 | Phase A1 可修复 ✅ |
+| `ForumPageClient.tsx` | SSR 数据仅写入 forum-store，**未写入 cache-store** — 行 52-63 | Phase A2 bug 确认 ✅ |
+| `cache-store.ts` | Zustand `"use client"` — **浏览器内存，非全局共享** | 缓存隔离分析见下 |
+
+### 1.2 缓存隔离 — L1 的准确范围
+
+**L1 缓存 (cache-store.ts) 是每个浏览器 Tab 独立的。**
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    请求生命周期                          │
-├─────────────────────────────────────────────────────────┤
-│                                                         │
-│  浏览器                    Next.js 服务端                │
-│  ┌──────┐    HTTP GET     ┌──────────────────┐          │
-│  │Client│ ──────────────→ │Server Component   │          │
-│  │      │                 │ (SSR)             │          │
-│  │      │                 │  ├ getCached*()   │──┐       │
-│  │      │                 │  └ render HTML    │  │       │
-│  │      │ ←── HTML ────── │                   │  │       │
-│  │      │                 └──────────────────┘  │       │
-│  │      │                                       ▼       │
-│  │      │   hydrate       ┌──────────────────┐  ┌─────┐ │
-│  │      │ ──────────────→ │Client Component   │  │SQLite│ │
-│  │      │                 │ (SSR data as      │  │     │ │
-│  │      │                 │  props → store)   │  │WAL  │ │
-│  │      │                 └──────────────────┘  │     │ │
-│  │      │                                       └─────┘ │
-│  │      │   interaction   ┌──────────────────┐          │
-│  │      │ ──────────────→ │API Route          │          │
-│  │      │ ←── JSON ────── │ (pipeline)        │          │
-│  └──────┘                 └──────────────────┘          │
-│                                                         │
-└─────────────────────────────────────────────────────────┘
+Tab A (cache-store)  ←── 不共享 ──→  Tab B (cache-store)
+  200 条目              独立实例            200 条目
+  5min TTL              各自过期            5min TTL
 ```
 
-### 延迟预算
+这意味：
+- 同一台机器的 3 个 Tab 各自维护独立缓存。不会冲突。
+- 用户打开新 Tab 时缓存完全冷启动——不继承已有数据。
+- L2 (HTTP Cache-Control) 由浏览器统一管理，**可以跨 Tab 共享**。如果 Service Worker 介入，可进一步统一。
 
-| 阶段 | 目标 | 当前 |
-|------|------|------|
-| TTFB (服务端首字节) | < 50ms | ~20ms (SQLite 命中) |
-| FCP (首次内容绘制) | < 500ms | ~200ms (SSR) |
-| LCP (最大内容绘制) | < 1s | ~800ms (含 spinner flash) |
-| TTI (可交互) | < 1.5s | ~1s |
-| 客户端导航 | < 200ms | ~200ms (桌面) / ~2s (移动端*有 bug) |
-| CLS (布局偏移) | < 0.05 | 0.1-0.3 (图片无宽高) |
+**关键结论**: L1 过期不会影响其他 Tab；但同一 Tab 内 L1/L2 同时过期的风险确实存在。解决方案见第二章。
+
+### 1.3 当前延迟预算 (实际探针数据)
+
+| 阶段 | 实测值 | 说明 |
+|------|--------|------|
+| TTFB (服务端首字节) | ~20ms | SQLite 命中，`getCachedThreads` with LIMIT |
+| SSR HTML 生成 | ~5ms | 50 行 map + JSON 序列化 |
+| JS Bundle 下载 | ~150ms | 87.3kB shared (本地 WiFi) |
+| React Hydration | ~100ms | 105kB forum page |
+| **SSR data → 显示** | ~0ms | ✅ SSR 直出内容 |
+| **重复 fetch (bug)** | +200-800ms | ❌ 客户端 cache-store miss → 重新网络请求 |
+| **Spinner flash (bug)** | +0ms | ❌ 重复 fetch 设置 loading=true 覆盖 SSR |
+
+**因此修复 Phase A2 (SSR cache-store 写入 + 跳过 fetch) 是最高优先级。**(And I'm now in build mode, so I could implement it.)
+
+### 1.4 架构依赖链
+
+```
+Phase A1 (BottomNav Link)
+  └── 依赖: 无 (纯前端组件修改, 1 行改动)
+
+Phase A2 (SSR 重复 fetch)
+  └── 依赖: forum/page.tsx 和 thread/page.tsx 已是 Server Component ✅
+        ForumPageClient 已接收 initialThreads props ✅
+        只需在 useEffect#1 中同时写入 cache-store
+
+Phase A3 (console.log gate)
+  └── 依赖: 无 (纯服务端改动)
+```
 
 ---
 
-## 二、缓存策略
+## 二、缓存策略 — L1/L2 错开 + 穿透防护
 
-### 2.1 三层缓存架构
+### 2.1 问题诊断: L1 与 L2 同步过期
+
+```
+当前设计:
+  L1 TTL: 5min (300s)
+  L2 max-age: 300s (论坛列表)
+  
+  → L1 和 L2 完全同步过期
+  → L1 过期 → 检查 L2 → L2 也过期 → 直接穿透到 L3 (SQLite/网络)
+  → 两层缓存形同虚设，任意时刻都只有一层在有效
+```
+
+### 2.2 修复方案: 阶梯式 TTL
+
+```
+修复后:
+  L1 TTL: 5min (300s)         ← 浏览器内存, 快速响应
+  L2 max-age: 900s (15min)    ← HTTP 缓存, 长于 L1
+  L2 stale-while-revalidate: 600s (10min)  ← 过期后先返回旧数据
+
+流程:
+  t=0s:     API 返回, L1 缓存 5min, L2 缓存 15min
+  t=3min:   L1 命中 → 返回 ✅
+  t=6min:   L1 过期, L2 仍有效 (距过期还有 9min) → 浏览器直接拿 L2 ✅
+  t=16min:  L2 也过期了, 但 SWR 窗口内 → 拿 stale 数据 + 后台刷新 ✅
+  t=26min:  SWR 窗口也过 → 请求到服务端 → L3 ✅
+```
+
+**关键: L2 TTL 应显著大于 L1 TTL (建议 3-5x)。整个页面生命周期中，L1 承担热点，L2 承担冷存储。**
+
+### 2.3 穿透保护表
+
+| 场景 | L1 状态 | L2 状态 | 结果 |
+|------|---------|---------|------|
+| 刚才过 | 命中 | — | L1 返回 (0ms) |
+| 5min 前 | 过期 | 有效 | L2 返回 (~0ms, browser cache) |
+| 15min 前 | 过期 | 过期但 SWR | L2 stale 返回 + 后台刷新 |
+| 30min+ | 过期 | 完全过期 | L3 SQLite (~20ms) 或 网络抓取 (~3s) |
+
+### 2.4 缓存三层架构 (补齐 SWR)
 
 ```
 ┌──────────────────────────────────────────────────┐
-│ L1: 内存缓存 (Zustand cache-store)                 │
-│ ├ 容量: 200 条目                                  │
-│ ├ TTL: 5 分钟 (计划→15分钟)                       │
-│ ├ 淘汰: FIFO-LRU (非严格 LRU)                      │
-│ ├ Pin 机制: 订阅板块保护不被淘汰                   │
-│ ├ Stats: hits / misses / stale                    │
-│ └ 命中时: 立即返回，无网络请求                     │
+│ L1: 浏览器内存 (Zustand cache-store)               │
+│ ├ 容量: 200 条目 (per-tab, 独立实例)               │
+│ ├ TTL: 5min                                       │
+│ ├ 淘汰: FIFO-LRU                                   │
+│ ├ Pin: 订阅板块永久保护                             │
+│ └ fix: SSR 数据同时写入, 消除重复 fetch             │
 ├──────────────────────────────────────────────────┤
-│ L2: HTTP 缓存 (Cache-Control 头)                   │
-│ ├ 论坛列表: max-age=300 (5min)                     │
-│ ├ 论坛列表 (新鲜): max-age=120 (2min)              │
+│ L2: HTTP 缓存 (Cache-Control)                      │
+│ ├ 论坛列表: max-age=900, stale-while-revalidate=600│
+│ ├ 论坛列表(新鲜): max-age=120                      │
 │ ├ 图片代理: max-age=86400 (1d)                     │
-│ └ 计划: 添加 stale-while-revalidate=600            │
+│ └ 共享: 浏览器统一管理, 跨 Tab 共享                │
 ├──────────────────────────────────────────────────┤
-│ L3: SQLite 持久层 (better-sqlite3)                 │
-│ ├ 论坛: 366 板块, 预抓取                           │
-│ ├ 帖子: threads + posts 多页                       │
-│ ├ FTS5: posts_fts 全文索引                         │
-│ ├ WAL 模式: 读写并发                               │
-│ ├ PRAGMA optimize: 每 6h                           │
-│ └ 计划: cache_size=64MB, mmap_size=256MB           │
+│ L3: SQLite 持久层                                   │
+│ ├ WAL 模式 + busy_timeout=5000                    │
+│ ├ FTS5: 定时 rebuild (15min)                       │
+│ ├ 计划: cache_size=64MB, mmap_size=256MB           │
+│ └ 穿透仅当 L1+L2 均完全过期                         │
 └──────────────────────────────────────────────────┘
 ```
 
@@ -113,68 +167,80 @@ search:{query}:{fid}      → 搜索结果
 
 ---
 
-## 三、加载策略
+## 三、零 Spinner + 渐进加载的骨架屏方案
 
-### 3.1 首屏加载 — 零 Spinner 原则
-
-**目标**: 用户看到的第一帧就是内容，永远不是 spinner。
+### 3.1 问题: "零 Spinner" 与 "渐进加载" 的技术矛盾
 
 ```
-Phase 1: HTML 交付 (0-20ms)
-  ├ 服务端 SSR → 完整 HTML 含内容
-  └ 浏览器解析 HTML → FCP
+设定的两个目标互相冲突:
+  (a) "零 spinner" — 用户永远看不到加载动画
+  (b) "渐进加载 P0-P4" — 低优先级内容延迟加载
 
-Phase 2: JS 解析 + Hydration (20-300ms)
-  ├ 下载并解析 JS bundle
-  ├ React hydrate: 复用 SSR DOM
-  └ CSSOM 构建完成 → 样式应用
-
-Phase 3: 客户端就绪 (300-500ms)
-  ├ Zustand store 初始化
-  ├ 事件监听器绑定
-  └ 图片渐进加载 (lazy)
+冲突:
+  如果 P2-P3 的 Client Islands 异步加载时没有 spinner，
+  页面会出现:
+    ① 局部空白区域 (未 hydrate 的组件不渲染)
+    ② 布局抖动 CLS (组件挂载后突然出现, 推动周围内容)
+    ③ 交互死区 (按钮存在但 JS 未绑定)
 ```
 
-### 3.2 SSR 数据流 — 当前缺陷与修复
+### 3.2 解决方案: 分级骨架屏
+
+**原则**: 永远不让用户看到"空"。每个延迟加载的区域都预先占用空间。
 
 ```
-当前 (有 bug):
-  Server: fetch SQLite → render HTML → 发送
-  Client: useEffect#1: SSR data → store ✅
-          useEffect#2: cache-store 检查 → miss → 重新 fetch ❌
-                       → loading=true → spinner 覆盖 SSR 内容 ❌
-          useEffect#3: 预取帖子
-
-修复后:
-  Server: fetch SQLite → render HTML → 发送
-  Client: useEffect#1: SSR data → store + cache-store ✅
-          useEffect#2: store.threads.length>0 → 跳过 fetch ✅
-          useEffect#3: 预取帖子
+┌──────────────────────────────────────────────┐
+│ P0 (0ms):    HTML 骨架 + CSS + 首屏文本      │  无延迟
+│              ├ 帖子标题 + 作者               │
+│              └ 导航栏 (SSR 直出)             │
+├──────────────────────────────────────────────┤
+│ P1 (50ms):   SSR 数据注入 → 帖子列表          │  有数据即渲染
+│              ├ 50 条帖子卡片                  │
+│              └ 页码导航                       │
+├──────────────────────────────────────────────┤
+│ P2 (200ms):  图片                             │  骨架: fixed height + aspect-ratio
+│              ├ 占位: <div class="h-52         │         + shimmer (淡入动画)
+│              │          rounded-xl            │
+│              │          bg-[var(--bg-tertiary)]│
+│              │          animate-pulse" />     │
+│              └ 图片加载后 → fade in 替换      │
+├──────────────────────────────────────────────┤
+│ P3 (500ms):  Client Islands 异步组件          │  骨架: skeleton placeholder
+│              ├ LoginDialog   → <GlassSkeleton │
+│              ├ ImageGallery  → 固定高度占位   │
+│              └ Sidebar       → SSR 直出(不变) │
+├──────────────────────────────────────────────┤
+│ P4 (idle):   悬停预取 + 收藏数据              │  骨架: 无 (后台静默) 
+│              ├ 帖子详情 prefetch              │
+│              └ localStorage 读取              │
+└──────────────────────────────────────────────┘
 ```
 
-### 3.3 渐进加载优先级
+### 3.3 骨架屏实现方式
 
-| 优先级 | 内容 | 触发时机 |
-|--------|------|----------|
-| **P0 立即** | HTML 结构 + 首屏 CSS | SSR 直出 |
-| **P1 尽快** | 首屏图文内容 | SSR 数据注入 |
-| **P2 后台** | 帖子详情预取 | IntersectionObserver + hover |
-| **P3 空闲** | 图片加载 | native lazy + aspect-ratio |
-| **P4 按需** | 收藏列表 / 用户数据 | 导航到对应页面 |
+| 组件 | 延迟原因 | 占位方案 |
+|------|----------|----------|
+| ImageGallery 图片 | lazy loading | `aspect-ratio: 16/9` + `bg-[var(--bg-tertiary)]` + `animate-pulse` |
+| ChunkedPostRenderer 长帖 | 内容过长分段 | 已有的 `GlassSkeleton` 组件 (h-48 rounded-2xl) |
+| LoginDialog 弹窗 | `next/dynamic({ ssr: false })` | 无占位 (弹窗不存在于初始 DOM) |
+| Sidebar 收藏区域 | `/favorites` 页面数据 | 导航到独立页面, 无需在侧边栏渲染 |
+| ThreadPageClient 详细内容 | 帖子页 SSR 数据注入 | 与论坛页相同 — SSR 直出, 无 spinner |
 
-### 3.4 图片加载策略
+### 3.4 CLS 防护 (针对 P2-P3)
 
 ```
-内嵌内容图 (extractor.ts 注入):
-  loading="lazy" decoding="async" + aspect-ratio 预留空间
+所有延迟加载区域必须满足:
+  ① 固定 min-height (CSS 或 inline style)
+  ② aspect-ratio (图片) 或 contain-intrinsic-size (containment)
+  ③ 过渡动画使用 opacity + transform (仅 Composite, 不触发 Layout)
 
-画廊图 (ImageGallery):
-  loading="lazy" + aspect-ratio: 16/9 + object-fit: cover
+已存在的 GlassSkeleton 组件：
+  className="h-48 rounded-2xl"  ← 固定高度, 可立即使用
+  需补充: animate-pulse 或 skeleton-shimmer
 
-外链图:
-  当前: /api/v1/image-proxy?url=...   (双倍延迟)
-  优化: img.nga.178.com 直连 (CORS 已配置)
-        image-proxy 仅用于非 NGA 域名
+待新增的图片骨架：
+  <div class="rounded-xl bg-[var(--bg-tertiary)] animate-pulse"
+       style="aspect-ratio: 16/9" />  ← 无 CLS
 ```
 
 ---
