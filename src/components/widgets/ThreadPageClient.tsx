@@ -34,9 +34,8 @@ export default function ThreadPageClient({ tid: propTid, fid: propFid, page: pro
 
   useScrollRestore(`thread:${tid}:${currentPage}`);
   useEffect(() => { markAsRead(tid); }, [tid]);
-  useEffect(() => { return () => { useCacheStore.getState().evictByPrefix("thread"); }; }, [tid]);
 
-  // SSR initial data injection
+  // SSR initial data injection — also populate cache-store for SWR
   useEffect(() => {
     if (initialPosts && !ssrUsed && currentPage === 1) {
       setSsrUsed(true);
@@ -44,6 +43,13 @@ export default function ThreadPageClient({ tid: propTid, fid: propFid, page: pro
       store.setTotalPages(threadInfo?.totalPages || 1);
       store.setThread({ tid, fid, title: threadInfo?.title || "", author: threadInfo?.author || "", replyCount: threadInfo?.replyCount || 0 } as any);
       store.setLoading(false);
+      // Write to cache-store for back-navigation hits
+      const cacheKey = getCacheKey("thread", tid, currentPage);
+      useCacheStore.getState().set(cacheKey, {
+        thread: { tid, fid, title: threadInfo?.title, author: threadInfo?.author, replyCount: threadInfo?.replyCount },
+        posts: initialPosts,
+        totalPages: threadInfo?.totalPages || 1,
+      });
     }
   }, [initialPosts, ssrUsed, currentPage]);
 
@@ -59,6 +65,10 @@ export default function ThreadPageClient({ tid: propTid, fid: propFid, page: pro
       store.setPosts(cached.data.posts || []);
       store.setTotalPages(cached.data.totalPages || 1);
       store.setLoading(false); store.setPageLoading(false);
+      // SWR: if stale, refresh in background
+      if (cached.stale) {
+        cacheApi.prefetch(`/api/v1/threads/${tid}?page=${currentPage}`, cacheKey);
+      }
       return;
     }
     if (currentPage !== 1) store.setPageLoading(true);

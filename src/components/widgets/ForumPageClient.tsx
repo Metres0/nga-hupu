@@ -59,6 +59,15 @@ export default function ForumPageClient({ fid: propFid, initialThreads, initialM
       fa.setFid(fid);
       fa.setLoading(false);
       fa.setCached(true);
+      // Also write to cache-store so subsequent navigations hit L1
+      const cacheKey = getCacheKey("forum", fid, currentPage);
+      useCacheStore.getState().set(cacheKey, {
+        data: initialThreads,
+        totalPages: initialMeta?.totalPages || 1,
+        hasMore: (initialMeta?.totalPages || 1) > 1,
+        forum: { name: initialMeta?.forumName || "" },
+        cached: true,
+      });
     }
   }, [initialThreads, ssrUsed, currentPage, fid, initialMeta]);
 
@@ -68,9 +77,18 @@ export default function ForumPageClient({ fid: propFid, initialThreads, initialM
     const cacheKey = getCacheKey("forum", fid, currentPage);
     const ca = useCacheStore.getState(); const cached = ca.get<any>(cacheKey);
     if (cached) {
-      fa.setThreads(cached.data.data || []); fa.setTotalPages(cached.data.totalPages || 1);
-      fa.setHasMore(cached.data.hasMore || false); fa.setForumName(cached.data.forum?.name || "");
-      fa.setCached(cached.data.cached || false); fa.setLoading(false); fa.setPageLoading(false); return;
+      // Use cached data immediately
+      fa.setThreads(cached.data.data || cached.data || []);
+      fa.setTotalPages(cached.data.totalPages || 1);
+      fa.setHasMore(cached.data.hasMore || false);
+      fa.setForumName(cached.data.forum?.name || "");
+      fa.setCached(cached.data.cached || false);
+      fa.setLoading(false); fa.setPageLoading(false);
+      // If stale, trigger background refresh (SWR pattern)
+      if (cached.stale) {
+        ca.prefetch(`/api/v1/forums/${fid}?page=${currentPage}`, cacheKey);
+      }
+      return;
     }
     if (currentPage === 1) fa.setLoading(true); else fa.setPageLoading(true); fa.setError(null);
     fetch(`/api/v1/forums/${fid}?page=${currentPage}`)
