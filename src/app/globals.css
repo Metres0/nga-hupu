@@ -140,10 +140,10 @@
   --glass-bg-light: rgba(15, 17, 24, 0.50); --glass-bg-medium: rgba(15, 17, 24, 0.68);
   --glass-bg-heavy: rgba(15, 17, 24, 0.84);
   --glass-glow: 0 0 0 1px rgba(144, 202, 249, 0.06);
-  --card-warm: rgba(26,29,36,1); --card-cool: rgba(19,24,32,1);
-  --card-cream: rgba(22,26,33,1); --card-plum: rgba(26,22,33,1);
-  --card-slate: rgba(22,24,33,1); --card-mint: rgba(19,26,24,1);
-  --card-peach: rgba(28,24,18,1);
+  --card-warm: rgba(50,35,60,1); --card-cool: rgba(25,35,55,1);
+  --card-cream: rgba(40,35,50,1); --card-plum: rgba(45,30,50,1);
+  --card-slate: rgba(30,35,50,1); --card-mint: rgba(22,40,38,1);
+  --card-peach: rgba(45,35,25,1);
   --sidebar-bg: var(--md-surface-container-low);
   --sidebar-active: var(--md-surface-container-high);
 }
@@ -252,6 +252,11 @@ a:hover { text-decoration: underline; }
 }
 
 @media (max-width: 640px) { html { font-size: 13px; } body { font-size: var(--fs-body-sm); } }
+
+/* ═══ Dark theme component fixes ═══ */
+[data-theme="dark"] .glass-card-elevated { background: var(--md-surface-container); }
+[data-theme="dark"] .glass-input { background: rgba(196,198,208,0.04); color: var(--text-primary); }
+[data-theme="dark"] .glass-input::placeholder { color: var(--text-placeholder); }
 
 /* ═══ Chunked content (CSS containment for long posts) ═══ */
 .chunked-content { contain: layout style; }

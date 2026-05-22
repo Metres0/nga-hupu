@@ -15,18 +15,22 @@ interface ForumState {
   pageLoading: boolean;
   error: string | null;
   activeCategory: string;
+  sortBy: "lastReply" | "createTime" | "replyCount";
+  sortAsc: boolean;
 
-  setFid: (fid: number) => void;
   setThreads: (threads: Thread[]) => void;
   setPage: (page: number) => void;
-  setTotalPages: (total: number) => void;
+  setTotalPages: (v: number) => void;
   setHasMore: (v: boolean) => void;
   setForumName: (name: string) => void;
+  setFid: (fid: number) => void;
   setCached: (v: boolean) => void;
   setLoading: (v: boolean) => void;
   setPageLoading: (v: boolean) => void;
   setError: (err: string | null) => void;
-  setActiveCategory: (cat: string) => void;
+  setActiveCategory: (id: string) => void;
+  setSortBy: (sort: ForumState["sortBy"]) => void;
+  toggleSortOrder: () => void;
   reset: () => void;
 }
 
@@ -42,6 +46,8 @@ export const useForumStore = create<ForumState>((set) => ({
   pageLoading: false,
   error: null,
   activeCategory: "all",
+  sortBy: "lastReply" as ForumState["sortBy"],
+  sortAsc: false,
 
   setFid: (fid) => set({ fid }),
   setThreads: (threads) => set({ threads }),
@@ -54,6 +60,8 @@ export const useForumStore = create<ForumState>((set) => ({
   setPageLoading: (v) => set({ pageLoading: v }),
   setError: (err) => set({ error: err }),
   setActiveCategory: (cat) => set({ activeCategory: cat }),
+  setSortBy: (sort) => set({ sortBy: sort }),
+  toggleSortOrder: () => set((s) => ({ sortAsc: !s.sortAsc })),
   reset: () =>
     set({
       threads: [],
@@ -66,6 +74,8 @@ export const useForumStore = create<ForumState>((set) => ({
       loading: true,
       pageLoading: false,
       error: null,
-      activeCategory: "all",
+  activeCategory: "all",
+  sortBy: "lastReply" as ForumState["sortBy"],
+  sortAsc: false,
     }),
 }));

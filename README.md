@@ -31,6 +31,10 @@
 - **NGA 账号登录** — XPath 引擎驱动登录 + 验证码识别 + Cookie AES-256-GCM 加密存储
 - **自动续期** — 保存凭据后自动检测过期并重登录
 - **受限于限制板块** — 晴风村等需登录板块，已登录用户无障碍访问
+- **帖子收藏** — ⭐ 帖子/回复收藏，独立管理页面
+- **模糊搜索** — FTS5 + LIKE 回退，板块内搜索 + 全局搜索
+- **用户主页** — 点击作者名查看发言记录
+- **图片增强** — 缩放/左右切换/缩略图/下载/键盘导航
 
 ## 注册板块
 
@@ -187,6 +191,7 @@ src/
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | 架构设计 |
 | [`docs/API.md`](docs/API.md) | API 文档 |
 | [`docs/AUTH.md`](docs/AUTH.md) | 登录策略白皮书 |
+| [`CHANGELOG.md`](CHANGELOG.md) | 完整版本历史 |
 | [`docs/MASTER.md`](docs/MASTER.md) | 多板块接入总览 |
 | [`docs/QUICKSTART.md`](docs/QUICKSTART.md) | 快速开始 |
 | [`docs/ANDROID.md`](docs/ANDROID.md) | Flutter 移植指南 |

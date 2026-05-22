@@ -229,8 +229,12 @@ export function cacheForums(forums: Array<{ fid: number; name: string; parent_fi
   insertMany(forums);
 }
 
-export function getAllCachedForums(): Array<{ fid: number; name: string; parent_fid: number | null }> {
-  return getDb().prepare(`SELECT * FROM forums ORDER BY name ASC`).all() as any[];
+export function getAllCachedForums(): Array<{ fid: number; name: string; parent_fid: number | null; threadCount: number }> {
+  return getDb().prepare(
+    `SELECT f.*, COALESCE(tc.cnt, 0) as threadCount FROM forums f
+     LEFT JOIN (SELECT fid, COUNT(*) as cnt FROM threads GROUP BY fid) tc ON f.fid = tc.fid
+     ORDER BY f.name ASC`
+  ).all() as any[];
 }
 
 export function clearCache(fid?: number) {

@@ -2,13 +2,13 @@ import { getAllCachedForums } from "@/lib/cache/db";
 import HomeClient from "./HomeClient";
 
 function buildTree(
-  forums: Array<{ fid: number; name: string; parent_fid: number | null }>
+  forums: Array<{ fid: number; name: string; parent_fid: number | null; threadCount: number }>
 ) {
   const map = new Map<number, any>();
   const roots: any[] = [];
 
   forums.forEach((f) => {
-    map.set(f.fid, { fid: f.fid, name: f.name, parentFid: f.parent_fid, children: [] });
+    map.set(f.fid, { fid: f.fid, name: f.name, parentFid: f.parent_fid, children: [], threadCount: f.threadCount });
   });
 
   forums.forEach((f) => {

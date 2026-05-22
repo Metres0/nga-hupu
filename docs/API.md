@@ -72,7 +72,7 @@ Base URL: `http://localhost:3000`
 
 | 参数 | 类型 | 默认 | 说明 |
 |------|------|------|------|
-| `q` | string | 必需 | 搜索关键词 |
+| `q` | string | 必需 | 搜索关键词。前缀 `author:` 可按作者名搜索 (如 `author:半城nini`) |
 | `fid` | number | - | 板块过滤 |
 | `limit` | number | 20 | 返回数量 (max 50) |
 | `offset` | number | 0 | 分页偏移 |

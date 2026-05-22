@@ -10,6 +10,7 @@ interface ThreadState {
   loading: boolean;
   pageLoading: boolean;
   error: string | null;
+  lastRefresh: number | null;
 
   setThread: (t: Thread) => void;
   setPosts: (posts: Post[]) => void;
@@ -17,6 +18,7 @@ interface ThreadState {
   setLoading: (v: boolean) => void;
   setPageLoading: (v: boolean) => void;
   setError: (err: string | null) => void;
+  setLastRefresh: (ts: number) => void;
   reset: () => void;
 }
 
@@ -27,6 +29,7 @@ export const useThreadStore = create<ThreadState>((set) => ({
   loading: true,
   pageLoading: false,
   error: null,
+  lastRefresh: null,
 
   setThread: (t) => set({ thread: t }),
   setPosts: (posts) => set({ posts }),
@@ -34,6 +37,7 @@ export const useThreadStore = create<ThreadState>((set) => ({
   setLoading: (v) => set({ loading: v }),
   setPageLoading: (v) => set({ pageLoading: v }),
   setError: (err) => set({ error: err }),
+  setLastRefresh: (ts) => set({ lastRefresh: ts }),
   reset: () =>
     set({
       thread: null,
@@ -42,5 +46,6 @@ export const useThreadStore = create<ThreadState>((set) => ({
       loading: true,
       pageLoading: false,
       error: null,
+      lastRefresh: null,
     }),
 }));

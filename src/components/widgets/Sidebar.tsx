@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { useUiStore } from "@/store/ui-store";
 import { useAuthStore } from "@/store/auth-store";
+import { useFavoriteStore } from "@/store/favorite-store";
 import { getPlugin } from "@/plugins/registry";
 import UserMenu from "@/components/widgets/UserMenu";
 
@@ -13,7 +14,7 @@ export default function Sidebar() {
   const { subscriptions, toggleSubscribe } = useUiStore();
   const { loggedIn, username, loading, expiringSoon, expiresAt, initAuth, openLoginDialog } = useAuthStore();
 
-  useEffect(() => { initAuth(); }, []);
+  useEffect(() => { initAuth(); useFavoriteStore.getState().loadFromStorage(); }, []);
 
   const subs = subscriptions.map((s) => ({
     fid: s.fid,
@@ -130,6 +131,8 @@ export default function Sidebar() {
           </div>
         )}
 
+        <FavoriteSection />
+
         <div className="px-3 pt-2 pb-1">
           <div className="text-[var(--text-tertiary)] text-[11px] font-semibold uppercase tracking-wider px-2 pt-2 pb-1.5">探索</div>
           <Link href="/"
@@ -150,5 +153,19 @@ export default function Sidebar() {
         </a>
       </div>
     </aside>
+  );
+}
+
+function FavoriteSection() {
+  const count = useFavoriteStore((s) => s.threadCount() + s.postCount());
+  return (
+    <div className="px-3 py-1">
+      <Link href="/favorites"
+        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm no-underline text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] transition-all">
+        <span className="text-amber-400 text-xs">★</span>
+        <span>我的收藏</span>
+        {count > 0 && <span className="ml-auto text-[var(--text-tertiary)] text-xs">{count}</span>}
+      </Link>
+    </div>
   );
 }

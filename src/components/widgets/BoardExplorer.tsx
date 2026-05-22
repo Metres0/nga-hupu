@@ -32,6 +32,13 @@ export default function BoardExplorer({ boards }: BoardExplorerProps) {
     return { publicBoards: pub, restrictedBoards: rst };
   }, [search, boards]);
 
+  const hotBoards = useMemo(() => {
+    return [...boards]
+      .filter((b) => (b.threadCount || 0) > 0)
+      .sort((a, b) => (b.threadCount || 0) - (a.threadCount || 0))
+      .slice(0, 10);
+  }, [boards]);
+
   const allVisible = [...publicBoards, ...(showRestricted ? restrictedBoards : [])];
 
   return (
@@ -46,6 +53,24 @@ export default function BoardExplorer({ boards }: BoardExplorerProps) {
           <button onClick={() => setSearch("")} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] text-sm font-medium">X</button>
         )}
       </div>
+
+      {/* Hot boards section */}
+      {!search && hotBoards.length > 0 && (
+        <div className="glass-card rounded-2xl overflow-hidden">
+          <div className="w-full px-5 py-3 flex items-center gap-2">
+            <span className="text-[var(--text-secondary)] text-sm font-medium flex items-center gap-2">
+              🔥 热门板块 <span className="text-[var(--text-tertiary)] text-xs">{hotBoards.length}</span>
+            </span>
+          </div>
+          <div className="divide-y divide-[var(--border-muted)]">
+            {hotBoards.map((b) => {
+              const name = displayName(b);
+              const subscribed = isSubscribed(b.fid);
+              return <BoardCard key={b.fid} fid={b.fid} name={name} isSubscribed={subscribed} onToggle={() => toggleSubscribe(b.fid, name)} />;
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Restricted boards section */}
       {!loggedIn && restrictedBoards.length > 0 && (

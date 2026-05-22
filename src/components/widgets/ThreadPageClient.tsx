@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams, useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import PostCard from "@/components/widgets/PostCard";
@@ -105,10 +105,35 @@ export default function ThreadPageClient() {
 
   const treeNodes = buildReplyTree(store.posts);
   const flatNodes = flattenTree(treeNodes);
+  const [filter, setFilter] = useState("");
+
+  const filtered = filter.trim()
+    ? flatNodes.filter((n) =>
+        n.post.author.includes(filter) ||
+        n.post.content.includes(filter) ||
+        String(n.post.floor).includes(filter)
+      )
+    : flatNodes;
 
   return (
     <div>
       <GlassNav forumName={store.thread?.title || `帖子 #${tid}`} forumFid={fid} showBack />
+      <div className="max-w-5xl mx-auto px-4 py-2 flex items-center gap-2">
+        <div className="flex-1 relative">
+          <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+          </svg>
+          <input type="text" value={filter} onChange={(e) => setFilter(e.target.value)}
+            placeholder="搜索作者/内容/楼层..."
+            className="glass-input w-full pl-8 pr-3 py-1.5 rounded-lg text-xs" />
+        </div>
+        <button onClick={retryFetch} className="shrink-0 text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] glass-card px-2.5 py-1.5 rounded-lg transition-colors" title="刷新">
+          ↻
+        </button>
+        {store.lastRefresh && (
+          <span className="text-[10px] text-[var(--text-tertiary)]">{Math.floor((Date.now() - store.lastRefresh) / 60000)}m前</span>
+        )}
+      </div>
       <div className="max-w-5xl mx-auto px-4 py-6">
         {store.thread?.title && (
           <div className="mb-6">
@@ -135,11 +160,13 @@ export default function ThreadPageClient() {
             <p className="text-[var(--accent-red)] mb-4">{store.error}</p>
             <GlassButton variant="primary" onClick={retryFetch}>重试</GlassButton>
           </div>
-        ) : flatNodes.length === 0 ? (
-          <div className="text-center py-16 text-[var(--text-tertiary)]">暂无回复</div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-16 text-[var(--text-tertiary)]">{filter ? "无匹配内容" : "暂无回复"}</div>
         ) : (
           <div className="space-y-3">
-            {flatNodes.map(({ post, depth }) => (
+            {filter.match(/^\d+$/) ? filtered.map(({ post }) => (
+              <PostCard key={post.pid} post={post} isFirst={post.floor === 0} allPosts={store.posts} depth={0} />
+            )) : filtered.map(({ post, depth }) => (
               <PostCard key={post.pid} post={post} isFirst={post.floor === 0 && depth === 0} allPosts={store.posts} depth={depth} />
             ))}
           </div>

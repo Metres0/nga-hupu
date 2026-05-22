@@ -86,7 +86,7 @@ export default function ForumPageClient() {
       <AuthGate forumName={plugin?.name}>
         <ForumContent fid={fid} currentPage={currentPage} store={store} plugin={plugin}
           containerRef={containerRef} pulling={pulling} refreshing={refreshing}
-          authError={authError} openLoginDialog={openLoginDialog} />
+          authError={authError} openLoginDialog={openLoginDialog} onRefresh={refreshPage} />
       </AuthGate>
     );
   }
@@ -94,14 +94,21 @@ export default function ForumPageClient() {
   return (
     <ForumContent fid={fid} currentPage={currentPage} store={store} plugin={plugin}
       containerRef={containerRef} pulling={pulling} refreshing={refreshing}
-      authError={authError} openLoginDialog={openLoginDialog} />
+      authError={authError} openLoginDialog={openLoginDialog} onRefresh={refreshPage} />
   );
 }
 
-function ForumContent({ fid, currentPage, store, plugin, containerRef, pulling, refreshing, authError, openLoginDialog }: any) {
+function ForumContent({ fid, currentPage, store, plugin, containerRef, pulling, refreshing, authError, openLoginDialog, onRefresh }: any) {
   const filtered = !plugin || plugin.categories.length <= 1 || store.activeCategory === "all"
     ? store.threads
     : store.threads.filter((t: any) => { const cat = plugin.categories.find((c: any) => c.id === store.activeCategory); return cat ? (t.title.includes(`[${cat.name}]`) || t.categories?.includes(cat.name)) : true; });
+
+  const sorted = [...filtered].sort((a: any, b: any) => {
+    const dir = store.sortAsc ? 1 : -1;
+    if (store.sortBy === "replyCount") return (b.replyCount - a.replyCount) * dir;
+    if (store.sortBy === "createTime") return (b.createTime - a.createTime) * dir;
+    return (b.lastReplyTime - a.lastReplyTime) * dir;
+  });
 
   return (
     <div ref={containerRef}>
@@ -111,6 +118,18 @@ function ForumContent({ fid, currentPage, store, plugin, containerRef, pulling, 
         </div>
       )}
       <GlassNav forumName={plugin?.name || store.forumName || `板块 ${fid}`} forumFid={fid} showBack={true} />
+      {!authError && !store.loading && (
+        <div className="px-4 py-2 flex items-center gap-2">
+          <Link href={`/search?fid=${fid}`} className="shrink-0 flex items-center gap-1.5 text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] glass-card px-2.5 py-1.5 rounded-lg no-underline transition-colors">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            搜索
+          </Link>
+          <SortBar fid={fid} />
+          <button onClick={() => onRefresh()} className="shrink-0 text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] glass-card px-2 py-1 rounded-lg transition-colors ml-auto" title="刷新论坛列表">
+            ↻ 刷新
+          </button>
+        </div>
+      )}
       {authError && (
         <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
           <span className="text-3xl mb-3">🚫</span>
@@ -143,7 +162,7 @@ function ForumContent({ fid, currentPage, store, plugin, containerRef, pulling, 
               ))}
             </div>
           )}
-          <ThreadList threads={filtered} fid={fid} />
+          <ThreadList threads={sorted} fid={fid} />
           {store.hasMore && (
             <div className="flex justify-center py-4">
               <Link href={`/forum/${fid}?page=${currentPage + 1}`} className="no-underline">
@@ -154,6 +173,26 @@ function ForumContent({ fid, currentPage, store, plugin, containerRef, pulling, 
           {store.pageLoading && <div className="text-center text-xs text-[var(--text-tertiary)] py-3">加载中...</div>}
         </>
       )}
+    </div>
+  );
+}
+
+function SortBar({ fid }: { fid: number }) {
+  const { sortBy, sortAsc, setSortBy, toggleSortOrder } = useForumStore();
+  const options = [
+    { value: "lastReply" as const, label: "最新回复" },
+    { value: "createTime" as const, label: "最新发帖" },
+    { value: "replyCount" as const, label: "最多回复" },
+  ];
+  return (
+    <div className="flex items-center gap-1 flex-wrap">
+      {options.map((o) => (
+        <button key={o.value} onClick={() => { if (sortBy === o.value) toggleSortOrder(); else setSortBy(o.value); }}
+          className={`px-2.5 py-1 rounded-full text-xs transition-all ${sortBy === o.value ? "bg-[var(--md-primary)] text-[var(--md-on-primary)]" : "glass-card text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]"}`}>
+          {o.label}
+          {sortBy === o.value && (sortAsc ? " ↑" : " ↓")}
+        </button>
+      ))}
     </div>
   );
 }
