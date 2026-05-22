@@ -1,11 +1,13 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
-import ChunkedPostRenderer from "@/components/widgets/ChunkedPostRenderer";
 import type { Post } from "@/lib/types";
-import ImageGallery from "./ImageGallery";
 import { useFavoriteStore } from "@/store/favorite-store";
+
+const ImageGallery = dynamic(() => import("./ImageGallery"), { ssr: true });
+const ChunkedPostRenderer = dynamic(() => import("./ChunkedPostRenderer"), { ssr: true });
 
 const AVATAR_GRADIENTS = [
   "from-indigo-400 to-blue-500", "from-emerald-400 to-teal-500",

@@ -1,11 +1,13 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { ThemeProvider } from "@/lib/theme";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 import Sidebar from "@/components/widgets/Sidebar";
 import BottomNav from "@/components/widgets/BottomNav";
 import BackToTop from "@/components/widgets/BackToTop";
-import LoginDialog from "@/components/widgets/LoginDialog";
+
+const LoginDialog = dynamic(() => import("@/components/widgets/LoginDialog"), { ssr: false });
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   return (

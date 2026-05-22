@@ -193,6 +193,8 @@ a:hover { text-decoration: underline; }
   0% { transform: translateX(-100%); }
   100% { transform: translateX(100%); }
 }
+
+@layer components {
 .skeleton-shimmer::after {
   content: ""; position: absolute; inset: 0; border-radius: inherit;
   background: linear-gradient(100deg, transparent 25%, rgba(0,0,0,0.03) 50%, transparent 75%);
@@ -253,7 +255,9 @@ a:hover { text-decoration: underline; }
 
 @media (max-width: 640px) { html { font-size: 13px; } body { font-size: var(--fs-body-sm); } }
 
-/* ═══ Dark theme component fixes ═══ */
+}
+
+/* ═══ Dark theme component fixes (outside layer for specificity) ═══ */
 [data-theme="dark"] .glass-card-elevated { background: var(--md-surface-container); }
 [data-theme="dark"] .glass-input { background: rgba(196,198,208,0.04); color: var(--text-primary); }
 [data-theme="dark"] .glass-input::placeholder { color: var(--text-placeholder); }

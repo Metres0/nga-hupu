@@ -6,8 +6,7 @@ import BoardExplorer from "@/components/widgets/BoardExplorer";
 import { GlassSkeleton } from "@/components/ui/GlassSkeleton";
 import { GlassButton } from "@/components/ui/GlassButton";
 import { useUiStore } from "@/store/ui-store";
-import { useCacheStore } from "@/store/cache-store";
-import { getCacheKey } from "@/lib/nga-cache";
+import { useCacheStore, getCacheKey } from "@/store/cache-store";
 import type { BoardNode } from "@/lib/types";
 
 interface HomeClientProps { initialBoards: BoardNode[]; lastUpdated: number | null; staleMinutes: number; }

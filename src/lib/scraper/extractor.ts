@@ -191,7 +191,7 @@ export function extractThreadDetail(html: string, tid: number, page: number): {
       }
       contentHtml = contentHtml.replace(
         /src="(https?:\/\/[^"]+)"/gi,
-        (_, url: string) => `src="/api/v1/image-proxy?url=${encodeURIComponent(url)}"`
+        (_, url: string) => `src="/api/v1/image-proxy?url=${encodeURIComponent(url)}" loading="lazy" decoding="async"`
       );
 
       $(candidate).find("img").each((_, imgEl) => {
@@ -222,7 +222,7 @@ export function extractThreadDetail(html: string, tid: number, page: number): {
         if (!contentHtml) contentHtml = text.replace(/\n/g, "<br/>");
         contentHtml = contentHtml.replace(
           /src="(https?:\/\/[^"]+)"/gi,
-          (_, url: string) => `src="/api/v1/image-proxy?url=${encodeURIComponent(url)}"`
+          (_, url: string) => `src="/api/v1/image-proxy?url=${encodeURIComponent(url)}" loading="lazy" decoding="async"`
         );
 
         $(uel).find("img").each((_, imgEl) => {

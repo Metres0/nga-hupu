@@ -1,4 +1,8 @@
 /** @type {import('next').NextConfig} */
+const withBundleAnalyzer = process.env.ANALYZE === "true"
+  ? require("@next/bundle-analyzer")({ enabled: true })
+  : (config) => config;
+
 const nextConfig = {
   images: {
     remotePatterns: [
@@ -12,6 +16,9 @@ const nextConfig = {
     serverComponentsExternalPackages: ['better-sqlite3', 'playwright'],
     instrumentationHook: true,
   },
+  compiler: {
+    removeConsole: process.env.NODE_ENV === "production",
+  },
 };
 
-module.exports = nextConfig;
+module.exports = withBundleAnalyzer(nextConfig);

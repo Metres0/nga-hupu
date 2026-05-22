@@ -94,19 +94,34 @@ function initSchema(database: Database.Database) {
   } catch {}
 }
 
-export function getCachedThreads(fid: number, maxAge: number = 300000) {
+export function getCachedThreads(fid: number, maxAge: number = 300000, limit?: number, offset?: number) {
   const database = getDb();
+  const hasLimit = typeof limit === "number" && typeof offset === "number";
   if (maxAge <= 0) {
+    if (hasLimit) {
+      return database
+        .prepare(`SELECT * FROM threads WHERE fid = ? ORDER BY last_reply_time DESC LIMIT ? OFFSET ?`)
+        .all(fid, limit, offset);
+    }
     return database
       .prepare(`SELECT * FROM threads WHERE fid = ? ORDER BY last_reply_time DESC`)
       .all(fid);
   }
   const cutoff = Date.now() - maxAge;
+  if (hasLimit) {
+    return database
+      .prepare(`SELECT * FROM threads WHERE fid = ? AND updated_at > ? ORDER BY last_reply_time DESC LIMIT ? OFFSET ?`)
+      .all(fid, cutoff, limit, offset);
+  }
   return database
-    .prepare(
-      `SELECT * FROM threads WHERE fid = ? AND updated_at > ? ORDER BY last_reply_time DESC`
-    )
+    .prepare(`SELECT * FROM threads WHERE fid = ? AND updated_at > ? ORDER BY last_reply_time DESC`)
     .all(fid, cutoff);
+}
+
+export function getCachedThreadCount(fid: number): number {
+  const database = getDb();
+  const row = database.prepare(`SELECT COUNT(*) as cnt FROM threads WHERE fid = ?`).get(fid) as any;
+  return row?.cnt || 0;
 }
 
 export function getCachedPosts(tid: number, maxAge: number = 300000, page: number = 1) {
@@ -196,8 +211,13 @@ export function cachePosts(posts: any[], page: number = 1) {
     }
   });
   insertMany(posts);
+}
+
+export function rebuildFtsIndex() {
+  const database = getDb();
   try {
     database.prepare(`INSERT INTO posts_fts(posts_fts) VALUES('rebuild')`).run();
+    console.log("[DB] FTS5 index rebuilt");
   } catch {}
 }
 

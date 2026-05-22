@@ -14,7 +14,7 @@ export function pipeline(
     let error: string | undefined;
 
     try {
-      acquireSlot();
+      await acquireSlot();
 
       const response = await withRetry(() => handler(req));
 

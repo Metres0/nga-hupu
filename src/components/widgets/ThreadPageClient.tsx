@@ -9,26 +9,43 @@ import { GlassButton } from "@/components/ui/GlassButton";
 import GlassNav from "@/components/widgets/GlassNav";
 import { GlassSkeletonList } from "@/components/ui/GlassSkeleton";
 import { buildReplyTree, flattenTree } from "@/lib/reply-tree";
-import { getCacheKey } from "@/lib/nga-cache";
-import { useCacheStore } from "@/store/cache-store";
+import { useCacheStore, getCacheKey } from "@/store/cache-store";
 import { useThreadStore } from "@/store/thread-store";
 import { useScrollRestore } from "@/lib/scroll-restore";
 import { markAsRead } from "@/lib/read-tracking";
 
-export default function ThreadPageClient() {
+interface ThreadPageProps {
+  tid: number; fid: number; page: number;
+  initialPosts?: any[] | null;
+  threadInfo?: { title: string; author: string; replyCount: number; totalPages: number } | null;
+}
+
+export default function ThreadPageClient({ tid: propTid, fid: propFid, page: propPage, initialPosts, threadInfo }: ThreadPageProps) {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  const tid = parseInt(params.tid as string);
-  const fid = parseInt(params.fid as string);
-  const currentPage = parseInt(searchParams.get("page") || "1");
+  const tid = propTid || parseInt(params.tid as string);
+  const fid = propFid || parseInt(params.fid as string);
+  const currentPage = propPage || parseInt(searchParams.get("page") || "1");
   const store = useThreadStore();
   const loadedRef = useRef<string>("");
+  const [ssrUsed, setSsrUsed] = useState(false);
 
   useScrollRestore(`thread:${tid}:${currentPage}`);
   useEffect(() => { markAsRead(tid); }, [tid]);
   useEffect(() => { return () => { useCacheStore.getState().evictByPrefix("thread"); }; }, [tid]);
+
+  // SSR initial data injection
+  useEffect(() => {
+    if (initialPosts && !ssrUsed && currentPage === 1) {
+      setSsrUsed(true);
+      store.setPosts(initialPosts);
+      store.setTotalPages(threadInfo?.totalPages || 1);
+      store.setThread({ tid, fid, title: threadInfo?.title || "", author: threadInfo?.author || "", replyCount: threadInfo?.replyCount || 0 } as any);
+      store.setLoading(false);
+    }
+  }, [initialPosts, ssrUsed, currentPage]);
 
   useEffect(() => {
     const loadKey = `${tid}:${currentPage}`;

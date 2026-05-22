@@ -1,5 +1,30 @@
 # Changelog
 
+## v4.3 (2026-05-22) — Performance Optimization
+
+### Optimized
+
+- **DB Pagination**: `getCachedThreads` now uses `LIMIT ? OFFSET ?` — eliminates loading all rows into memory
+- **FTS5 Rebuild**: Moved from per-write `cachePosts()` to 15-min periodic `instrumentation.ts` job
+- **SSR**: `forum/[fid]/page.tsx` and `thread/[tid]/page.tsx` converted to Server Components with server-side data fetching — zero loading spinner on first visit
+- **API Slimdown**: Removed redundant fields (`fid`, `authorId`, `categories`) from forum list response
+- **Double Cache Merge**: Deleted `nga-cache.ts`, consolidated into `cache-store.ts`
+- **Image Lazy Loading**: All content `<img>` tags now inject `loading="lazy" decoding="async"`
+- **Dynamic Imports**: `ImageGallery`, `LoginDialog`, `ChunkedPostRenderer` now code-split via `next/dynamic`
+- **Rate Limiter Queue**: Replaced immediate 429 rejection with Promise-based waiting queue
+- **CSS Layers**: Custom classes wrapped in `@layer components` for Tailwind tree-shaking
+- **Build**: `target: es2022`, `removeConsole: true`, `@next/bundle-analyzer` integration
+- **Cache-Control**: `max-age=30` → `300` for forum lists
+
+### Bundle Improvements
+
+| Page | Before | After |
+|------|--------|-------|
+| Forum page | 107 kB | 105 kB |
+| Thread page | 107 kB | 106 kB |
+
+---
+
 ## v4.2 (2026-05-22) — Feature Expansion
 
 ### Added

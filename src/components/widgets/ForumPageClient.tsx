@@ -9,21 +9,27 @@ import { GlassButton } from "@/components/ui/GlassButton";
 import GlassNav from "@/components/widgets/GlassNav";
 import AuthGate from "@/components/widgets/AuthGate";
 import { getPlugin } from "@/plugins/registry";
-import { getCacheKey } from "@/lib/nga-cache";
-import { useCacheStore } from "@/store/cache-store";
+import { useCacheStore, getCacheKey } from "@/store/cache-store";
 import { useForumStore } from "@/store/forum-store";
 import { useAuthStore } from "@/store/auth-store";
 import { useScrollRestore } from "@/lib/scroll-restore";
 import { usePullToRefresh } from "@/lib/pull-to-refresh";
 import type { Thread } from "@/lib/types";
 
-export default function ForumPageClient() {
+interface ForumPageProps {
+  fid: number;
+  initialThreads?: any[] | null;
+  initialMeta?: { totalPages: number; forumName: string };
+}
+
+export default function ForumPageClient({ fid: propFid, initialThreads, initialMeta }: ForumPageProps) {
   const params = useParams(); const searchParams = useSearchParams();
-  const fid = parseInt(params.fid as string); const currentPage = parseInt(searchParams.get("page") || "1");
+  const fid = propFid || parseInt(params.fid as string); const currentPage = parseInt(searchParams.get("page") || "1");
   const store = useForumStore(); const plugin = getPlugin(fid);
   const loadedRef = useRef(""); const prefetchedRef = useRef(new Set<string>());
   const openLoginDialog = useAuthStore((s) => s.openLoginDialog);
   const [authError, setAuthError] = useState(false);
+  const [ssrUsed, setSsrUsed] = useState(false);
   useScrollRestore(`forum:${fid}`);
 
   const refreshPage = useCallback(async () => {
@@ -41,6 +47,20 @@ export default function ForumPageClient() {
   }, [fid, currentPage]);
 
   const { containerRef, pulling, refreshing } = usePullToRefresh({ onRefresh: refreshPage });
+
+  // SSR initial data injection — avoids loading spinner on first render
+  useEffect(() => {
+    if (initialThreads && !ssrUsed && currentPage === 1) {
+      setSsrUsed(true);
+      const fa = useForumStore.getState();
+      fa.setThreads(initialThreads);
+      fa.setTotalPages(initialMeta?.totalPages || 1);
+      fa.setForumName(initialMeta?.forumName || "");
+      fa.setFid(fid);
+      fa.setLoading(false);
+      fa.setCached(true);
+    }
+  }, [initialThreads, ssrUsed, currentPage, fid, initialMeta]);
 
   useEffect(() => {
     const loadKey = `${fid}:${currentPage}`; if (loadedRef.current === loadKey) return; loadedRef.current = loadKey;

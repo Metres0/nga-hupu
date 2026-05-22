@@ -36,6 +36,13 @@ export async function register() {
       } catch {}
     }, 6 * 60 * 60 * 1000);
 
+    setInterval(() => {
+      try {
+        const { rebuildFtsIndex } = require("@/lib/cache/db");
+        rebuildFtsIndex();
+      } catch {}
+    }, 15 * 60 * 1000);
+
     setInterval(async () => {
       try {
         const { renewSessions } = await import("@/lib/auth/auto-renew");

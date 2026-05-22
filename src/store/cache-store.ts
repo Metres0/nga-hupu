@@ -82,3 +82,7 @@ export const useCacheStore = create<CacheState>((set, get) => ({
   },
   stats: () => ({ size: get().entries.size, hits: _hits, misses: _misses, stale: _staleHits, pinned: get().pinnedKeys.size }),
 }));
+
+export function getCacheKey(type: string, id: number, page?: number) {
+  return page ? `${type}:${id}:${page}` : `${type}:${id}`;
+}

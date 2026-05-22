@@ -3,7 +3,7 @@
 import { useRef, useCallback } from "react";
 import Link from "next/link";
 import type { Thread } from "@/lib/types";
-import { prefetchData, getCacheKey, getCachedData } from "@/lib/nga-cache";
+import { useCacheStore, getCacheKey } from "@/store/cache-store";
 import { isRead } from "@/lib/read-tracking";
 import { useFavoriteStore } from "@/store/favorite-store";
 
@@ -16,8 +16,8 @@ export function ThreadList({ threads, fid }: ThreadListProps) {
   const handleMouseEnter = useCallback((thread: Thread) => {
     if (thread.replyCount <= 0) return;
     const key = getCacheKey("thread", thread.tid);
-    if (getCachedData(key)) return;
-    hoverTimers.current.set(thread.tid, setTimeout(() => prefetchData(`/api/v1/threads/${thread.tid}?page=1`, key), 200));
+    if (useCacheStore.getState().get(key)) return;
+    hoverTimers.current.set(thread.tid, setTimeout(() => useCacheStore.getState().prefetch(`/api/v1/threads/${thread.tid}?page=1`, key), 200));
   }, []);
   const handleMouseLeave = useCallback((tid: number) => {
     const t = hoverTimers.current.get(tid); if (t) { clearTimeout(t); hoverTimers.current.delete(tid); }
