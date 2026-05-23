@@ -1,4 +1,4 @@
-# NGA 镜像站 — 架构文档 v4.7
+# NGA 镜像站 — 架构文档 v5.7
 
 ## 项目概述
 
@@ -214,10 +214,21 @@ CLI 按 `replyCount / 20` 计算总页数，最多抓 5 页。posts 表有 `page
 
 ## 最新更新 (2026-05-23)
 
-- **v4.7**: OS 边界加固 — 写锁前置 jitter + 进程组负 PID 杀灭
-- **v4.6**: 边缘加固 — BEGIN IMMEDIATE + spawn 超时守护 + 动态锁 TTL
-- **v4.5**: 深水区修复 — FTS5 optimize + 跨进程锁 + spawn 替代 execSync + 多实例文件锁
-- **v4.4**: 架构加固 — 请求去重 + 写入重试 + 抽楼清理 + SSR 登录态感知
+- **v5.7**: SSR 登录检测修复 (cookies→getSession) + 单列布局 + BBCode JS 清理
+- **v5.6**: 防御冲突解决 — jitter→retry-only + PRAGMA user_version + 自适应熔断
+- **v5.5**: 物理突破 — 批量预取管道 + SWR 指纹比对 + 高楼帖末页预取
+- **v5.4**: 极限压榨 — useRef 同步 TTI + 正则快速路径 + Playwright 熔断降级
+- **v5.3**: 加载流优化 — 后退修复 + 单写入者 + refresh 穿透
+- **v5.2**: 弹性加固 — FTS5 触发器 + Full Jitter + Fast 路径熔断器
+- **v5.1**: 抓取快路径 — fetch + Cheerio 替代 Playwright
+- **v5.0**: 登录性能 — 超时压缩 + Cookie 快照恢复
+- **v4.11**: 登录安全 — 内存 Cookie 缓存 + 续期 jitter
+- **v4.9**: 参数收敛 — busy_timeout=0 + LRU 500
+- **v4.8**: 加载缓存 — BottomNav Link + L2 SWR + 精确清理
+- **v4.7**: OS 边界 — fcntl jitter + 进程组杀灭
+- **v4.6**: SQLite 锁语义 — BEGIN IMMEDIATE + 超时守护 + 动态 TTL
+- **v4.5**: 深水区修复 — FTS5 optimize + 跨进程锁 + spawn + 多实例锁
+- **v4.4**: 架构加固 — 请求去重 + 写入重试 + 抽楼清理 + SSR 登录态
 - **v4.3**: 系统性能优化 (DB分页 + FTS5异步 + SSR改造 + 缓存合并 + 代码分割)
 - **v4.2**: 收藏系统 + 模糊搜索 + 用户主页 + 图片查看器增强 + 暗色完善 + 排序/热榜
 - **v4.1**: NGA 账号登录系统 (RSA引擎 + 验证码 + Cookie持久化 + 自动续期)
