@@ -194,17 +194,20 @@ export default function ThreadPageClient({ tid: propTid, fid: propFid, page: pro
           <div className="text-center py-16 text-[var(--text-tertiary)]">{filter ? "无匹配内容" : "暂无回复"}</div>
         ) : (
           <div className="space-y-3">
-            {openPid !== null && (
-              <ReplyForm
-                tid={tid}
-                pid={openPid}
-                replyToAuthor={store.posts.find((p: any) => p.pid === openPid)?.author}
-              />
-            )}
             {filter.match(/^\d+$/) ? filtered.map(({ post }) => (
-              <PostCard key={post.pid} post={post} isFirst={post.floor === 0} allPosts={store.posts} depth={0} />
+              <div key={post.pid}>
+                <PostCard post={post} isFirst={post.floor === 0} allPosts={store.posts} depth={0} />
+                {openPid === post.pid && (
+                  <ReplyForm tid={tid} pid={post.pid} replyToAuthor={post.author} />
+                )}
+              </div>
             )) : filtered.map(({ post, depth }) => (
-              <PostCard key={post.pid} post={post} isFirst={post.floor === 0 && depth === 0} allPosts={store.posts} depth={depth} />
+              <div key={post.pid}>
+                <PostCard post={post} isFirst={post.floor === 0 && depth === 0} allPosts={store.posts} depth={depth} />
+                {openPid === post.pid && (
+                  <ReplyForm tid={tid} pid={post.pid} replyToAuthor={post.author} />
+                )}
+              </div>
             ))}
           </div>
         )}

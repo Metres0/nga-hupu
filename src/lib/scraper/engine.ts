@@ -233,8 +233,23 @@ export async function scrapeReplyToPost(
       await p.goto(url, { waitUntil: "domcontentloaded", timeout: 15000 });
       await skipAdIfPresent(p);
 
-      // Locate the fast reply textarea
-      const textarea = p.locator("textarea#postcontent, textarea[name='postcontent'], textarea").first();
+      // Multi-level selector for NGA reply textarea (mobile+desktop)
+      let textarea = p.locator("textarea#fastpostcontent").first();
+      if ((await textarea.count()) === 0) {
+        textarea = p.locator("textarea#postcontent, textarea[name='atc_content'], textarea[name='postcontent']").first();
+      }
+      if ((await textarea.count()) === 0) {
+        // Try clicking the "快速回复" or "回复" button to expand the reply box
+        const replyTrigger = p.locator([
+          'a:has-text("快速回复")', 'a:has-text("回复")', 'button:has-text("回复")',
+          'a[title*="回复"]', '#fastpost',
+        ].join(", ")).first();
+        if ((await replyTrigger.count()) > 0) {
+          await replyTrigger.click();
+          await p.waitForTimeout(1000);
+          textarea = p.locator("textarea").first();
+        }
+      }
       if ((await textarea.count()) === 0) {
         return { success: false, error: "未找到回复输入框，请直接在 NGA 回复" };
       }
