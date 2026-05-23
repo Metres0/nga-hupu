@@ -253,6 +253,11 @@ export async function scrapeReplyToPost(
       if ((await textarea.count()) === 0) {
         return { success: false, error: "未找到回复输入框，请直接在 NGA 回复" };
       }
+      // Force visibility: scroll into view and focus
+      await textarea.scrollIntoViewIfNeeded();
+      await textarea.waitFor({ state: "visible", timeout: 5000 });
+      await textarea.focus();
+      await p.waitForTimeout(200);
       await textarea.fill(content);
 
       if (subject) {

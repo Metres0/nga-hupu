@@ -197,14 +197,14 @@ export default function ThreadPageClient({ tid: propTid, fid: propFid, page: pro
             {filter.match(/^\d+$/) ? filtered.map(({ post }) => (
               <div key={post.pid}>
                 <PostCard post={post} isFirst={post.floor === 0} allPosts={store.posts} depth={0} />
-                {openPid === post.pid && (
+                {openPid !== null && openPid === post.pid && (
                   <ReplyForm tid={tid} pid={post.pid} replyToAuthor={post.author} />
                 )}
               </div>
             )) : filtered.map(({ post, depth }) => (
               <div key={post.pid}>
                 <PostCard post={post} isFirst={post.floor === 0 && depth === 0} allPosts={store.posts} depth={depth} />
-                {openPid === post.pid && (
+                {openPid !== null && openPid === post.pid && (
                   <ReplyForm tid={tid} pid={post.pid} replyToAuthor={post.author} />
                 )}
               </div>
