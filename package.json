@@ -1,0 +1,50 @@
+{
+  "name": "nga-hupu",
+  "version": "2.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "scrape": "tsx scripts/scrape.ts",
+    "scrape-all": "tsx scripts/scrape-all.ts",
+    "scrape-boards": "tsx scripts/scrape-boards.ts",
+    "scrape-incremental": "tsx scripts/scrape-incremental.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "setup": "powershell -ExecutionPolicy Bypass -File scripts/manage.ps1 setup",
+    "manage": "powershell -ExecutionPolicy Bypass -File scripts/manage.ps1"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "cheerio": "^1.0.0",
+    "next": "^14.2.15",
+    "playwright": "^1.49.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^9.0.1",
+    "rehype-raw": "^7.0.0",
+    "rehype-sanitize": "^6.0.0",
+    "remark-gfm": "^4.0.0",
+    "zod": "^3.23.8",
+    "zustand": "^4.5.5"
+  },
+  "devDependencies": {
+    "@next/bundle-analyzer": "^16.2.6",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/jest-dom": "^6.5.0",
+    "@testing-library/react": "^16.0.0",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.9.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "autoprefixer": "^10.4.20",
+    "jsdom": "^25.0.0",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.14",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.0"
+  }
+}
