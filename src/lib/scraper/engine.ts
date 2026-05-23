@@ -225,6 +225,9 @@ export async function scrapeReplyToPost(
 ): Promise<ReplyResult> {
   const cookieStr = getDecryptedCookies() ?? undefined;
   if (!cookieStr) return { success: false, error: "请先登录 NGA 账号" };
+  if (!cookieStr.includes("ngaPassportUid") && !cookieStr.includes("ngaPassportCid")) {
+    return { success: false, error: "Cookie 认证信息缺失，请重新登录 NGA" };
+  }
 
   return withRetry(async () => {
     const p = await newPage(cookieStr);
@@ -233,6 +236,12 @@ export async function scrapeReplyToPost(
       const url = `https://bbs.nga.cn/post.php?action=reply&tid=${tid}`;
       await p.goto(url, { waitUntil: "domcontentloaded", timeout: 15000 });
       await skipAdIfPresent(p);
+
+      // Check if we're on a login page (session expired / cookie invalid)
+      const pageUrl = p.url();
+      if (pageUrl.includes("login") || pageUrl.includes("nuke.php")) {
+        return { success: false, error: "登录已过期，请重新登录 NGA" };
+      }
 
       // Find visible textarea on the reply page
       const textareaSels = [
@@ -249,13 +258,12 @@ export async function scrapeReplyToPost(
       if ((await textarea.count()) === 0) {
         return { success: false, error: "未找到回复输入框，请直接在 NGA 回复" };
       }
-      // Fill via JavaScript (bypass visibility checks for various NGA layouts)
+      // Fill via JavaScript (bypass visibility checks)
       await textarea.evaluate((el: any, val: string) => {
         const ta = el as HTMLTextAreaElement;
         ta.value = val;
         ta.dispatchEvent(new Event("input", { bubbles: true }));
         ta.dispatchEvent(new Event("change", { bubbles: true }));
-        ta.focus();
       }, content);
 
       if (subject) {
@@ -266,29 +274,42 @@ export async function scrapeReplyToPost(
           }, subject);
         }
       }
-      // Click submit button
+      // Click submit
       const submitBtn = p.locator([
         'input[type="submit"][name="Submit"]',
         'button[type="submit"]:has-text("发")',
         'input[type="submit"]',
         'button:has-text("提交")',
       ].join(", ")).first();
-      if ((await submitBtn.count()) > 0) {
-        await submitBtn.click();
-        await p.waitForTimeout(3000);
+      if ((await submitBtn.count()) === 0) {
+        return { success: false, error: "未找到发布按钮，请直接在 NGA 回复" };
       }
+      await submitBtn.click();
+      // Wait for redirect to thread page (success) or stay on form (failure)
+      await p.waitForTimeout(4000);
 
-      // Check result
-      const currentUrl = p.url();
-      if (currentUrl.includes("error") || currentUrl.includes("nuke")) {
+      const finalUrl = p.url();
+      // Success: redirected back to read.php?tid=... (not still on post.php)
+      if (finalUrl.includes(`read.php?tid=${tid}`) || !finalUrl.includes("post.php")) {
+        // Verify by checking for error messages on the page
         const body = await p.content();
         if (body.includes("验证码") || body.includes("captcha")) {
           return { success: false, error: "NGA 要求验证码，请直接在 NGA 回复" };
         }
-        return { success: false, error: "回复失败，可能触发了 NGA 风控" };
+        if (body.includes("发帖间隔") || body.includes("30 秒") || body.includes("限制")) {
+          return { success: false, error: "NGA 发帖间隔限制，请稍后重试" };
+        }
+        return { success: true };
       }
-
-      return { success: true };
+      // Still on post.php → check for error messages
+      const body = await p.content();
+      if (body.includes("验证码") || body.includes("captcha")) {
+        return { success: false, error: "NGA 要求验证码，请直接在 NGA 回复" };
+      }
+      if (body.includes("未登录") || body.includes("登录")) {
+        return { success: false, error: "登录已过期，请重新登录 NGA" };
+      }
+      return { success: false, error: "回复失败，请直接在 NGA 回复" };
     } finally {
       await p.context().close();
     }
