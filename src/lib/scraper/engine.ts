@@ -233,32 +233,57 @@ export async function scrapeReplyToPost(
       await p.goto(url, { waitUntil: "domcontentloaded", timeout: 15000 });
       await skipAdIfPresent(p);
 
-      // Multi-level selector for NGA reply textarea (mobile+desktop)
-      let textarea = p.locator("textarea#fastpostcontent").first();
-      if ((await textarea.count()) === 0) {
-        textarea = p.locator("textarea#postcontent, textarea[name='atc_content'], textarea[name='postcontent']").first();
+      // Multi-level selector for NGA reply textarea
+      const textareaSels = [
+        "textarea#fastpostcontent",
+        "textarea#postcontent:visible",
+        "textarea[name='postcontent']:visible",
+        "textarea[name='atc_content']:visible",
+      ];
+      let textarea = p.locator("xpath=.");
+      for (const sel of textareaSels) {
+        const el = p.locator(sel).first();
+        if ((await el.count()) > 0) {
+          const vis = await el.isVisible().catch(() => false);
+          if (vis) { textarea = el; break; }
+        }
       }
+      // Fallback: click reply button to expand, then try again
       if ((await textarea.count()) === 0) {
-        // Try clicking the "快速回复" or "回复" button to expand the reply box
-        const replyTrigger = p.locator([
-          'a:has-text("快速回复")', 'a:has-text("回复")', 'button:has-text("回复")',
-          'a[title*="回复"]', '#fastpost',
-        ].join(", ")).first();
-        if ((await replyTrigger.count()) > 0) {
-          await replyTrigger.click();
-          await p.waitForTimeout(1000);
-          textarea = p.locator("textarea").first();
+        const triggers = [
+          'a:has-text("快速回复")', 'a:has-text("回复")', '#fastpost',
+          'a[title*="回复"]',
+        ];
+        for (const sel of triggers) {
+          const btn = p.locator(sel).first();
+          if ((await btn.count()) > 0 && await btn.isVisible().catch(() => false)) {
+            await btn.click();
+            await p.waitForTimeout(800);
+            break;
+          }
+        }
+        for (const sel of textareaSels) {
+          const el = p.locator(sel).first();
+          if ((await el.count()) > 0) {
+            const vis = await el.isVisible().catch(() => false);
+            if (vis) { textarea = el; break; }
+          }
         }
       }
       if ((await textarea.count()) === 0) {
         return { success: false, error: "未找到回复输入框，请直接在 NGA 回复" };
       }
-      // Force visibility: scroll into view and focus
-      await textarea.scrollIntoViewIfNeeded();
-      await textarea.waitFor({ state: "visible", timeout: 5000 });
-      await textarea.focus();
-      await p.waitForTimeout(200);
-      await textarea.fill(content);
+      // Fill via JavaScript as fallback for stubborn hidden elements
+      try {
+        await textarea.waitFor({ state: "visible", timeout: 3000 });
+        await textarea.fill(content);
+      } catch {
+        await textarea.evaluate((el: any, val: string) => {
+          (el as HTMLTextAreaElement).value = val;
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+        }, content);
+      }
 
       if (subject) {
         const subjInput = p.locator("input#postsubject, input[name='postsubject']").first();
