@@ -84,25 +84,7 @@ export async function scrapeThreadList(
   const url = `https://bbs.nga.cn/thread.php?fid=${fid}&page=${page}`;
   const cookieStr = getDecryptedCookies() ?? undefined;
 
-  // Fast path: fetch + Cheerio (no Playwright overhead, ~300ms)
-  // Circuit breaker: skip fast path if NGA is blocking fetch requests
-  if (tryFastPath()) {
-    const fastResult = await scrapeThreadListFast(url, fid, cookieStr);
-    if (fastResult) {
-      recordFastSuccess();
-      return fastResult;
-    }
-    recordFastFailure();
-  }
-
-  // Degraded mode: circuit breaker open → skip Playwright → return null
-  // Caller (API route) should fall back to stale SQLite cache
-  if (_circuit.open) {
-    console.log("[Scraper] Circuit breaker open — returning null for stale cache fallback");
-    return { threads: [], totalPages: 1, forumName: "", subForums: [] };
-  }
-
-  // Fallback: Playwright full browser (for anti-bot or JS-required pages)
+  // Always use Playwright for correct encoding (NGA uses GBK, not UTF-8)
   return withRetry(async () => {
     const p = await newPage(cookieStr);
     try {
@@ -152,7 +134,8 @@ async function scrapeThreadListFast(
     }
     if (resp.status === 403 || resp.status >= 500) return null;
 
-    const html = await resp.text();
+    const buffer = await resp.arrayBuffer();
+    const html = new TextDecoder("gbk").decode(new Uint8Array(buffer));
     if (html.length < 500 || html.includes("安全检查")) return null;
 
     const result = extractThreadList(html, fid);

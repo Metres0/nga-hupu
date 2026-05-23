@@ -49,42 +49,7 @@ export interface ExtractedThreadList {
 }
 
 export function extractThreadList(html: string, fid: number): ExtractedThreadList {
-  // Fast path: regex-based extraction (no DOM tree, <5ms)
-  const fast = extractThreadListRegex(html, fid);
-  if (fast && fast.threads.length > 0) return fast;
-
-  // Fallback: Cheerio full DOM parsing (reliable, ~80ms)
   return extractThreadListCheerio(html, fid);
-}
-
-function extractThreadListRegex(html: string, fid: number): ExtractedThreadList | null {
-  try {
-    const threads: Thread[] = [];
-    // Split on topic link pattern: each <a ... class="...topic..." ...>thread title</a>
-    const topicRe = /<a\s[^>]*?\b(?:class\s*=\s*["'][^"']*?\btopic\b[^"']*["'])[^>]*?\bhref\s*=\s*["']read\.php\?tid=(\d+)[^"']*["'][^>]*>([\s\S]*?)<\/a\s*>/gi;
-    let m: RegExpExecArray | null;
-    while ((m = topicRe.exec(html)) !== null) {
-      const tid = parseInt(m[1]);
-      const title = m[2].replace(/<[^>]+>/g, "").trim();
-      if (!title || title.length < 2) continue;
-
-      const author = "";
-      const replyCount = 0;
-      const createTime = Date.now();
-
-      threads.push({
-        tid, fid, title,
-        author: author || "未知", authorId: 0,
-        createTime, lastReplyTime: createTime,
-        replyCount, sticky: false, digest: false,
-        categories: [],
-      });
-    }
-    if (threads.length === 0) return null;
-    return { threads, totalPages: 1, forumName: `板块 ${fid}`, subForums: [] };
-  } catch {
-    return null;
-  }
 }
 
 function extractThreadListCheerio(html: string, fid: number): ExtractedThreadList {
