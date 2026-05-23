@@ -219,6 +219,7 @@ interface ReplyResult { success: boolean; error?: string; }
 
 export async function scrapeReplyToPost(
   tid: number,
+  fid: number,
   pid: number,
   content: string,
   subject?: string
@@ -232,14 +233,14 @@ export async function scrapeReplyToPost(
   return withRetry(async () => {
     const p = await newPage(cookieStr);
     try {
-      // Try NGA reply page directly (dedicated reply form with visible textarea)
-      const url = `https://bbs.nga.cn/post.php?action=reply&tid=${tid}`;
+      // Strategy A: Use dedicated reply page (post.php)
+      const url = `https://bbs.nga.cn/post.php?action=reply&fid=${fid}&tid=${tid}`;
       await p.goto(url, { waitUntil: "domcontentloaded", timeout: 15000 });
       await skipAdIfPresent(p);
 
-      // Check if we're on a login page (session expired / cookie invalid)
+      // Check for login redirect
       const pageUrl = p.url();
-      if (pageUrl.includes("login") || pageUrl.includes("nuke.php")) {
+      if (pageUrl.includes("login") || pageUrl.includes("nuke.php") && !pageUrl.includes("post.php")) {
         return { success: false, error: "登录已过期，请重新登录 NGA" };
       }
 
@@ -274,17 +275,38 @@ export async function scrapeReplyToPost(
           }, subject);
         }
       }
-      // Click submit
-      const submitBtn = p.locator([
-        'input[type="submit"][name="Submit"]',
-        'button[type="submit"]:has-text("发")',
-        'input[type="submit"]',
-        'button:has-text("提交")',
-      ].join(", ")).first();
-      if ((await submitBtn.count()) === 0) {
+      // Submit: try form submit directly (most reliable), then button clicks
+      const form = p.locator("form[name='postform'], form[method='post'], form").first();
+      let submitted = false;
+      if ((await form.count()) > 0) {
+        try {
+          await form.evaluate((el: any) => {
+            const f = el as HTMLFormElement;
+            // Ensure all required hidden fields are present
+            f.submit();
+          });
+          submitted = true;
+          await p.waitForTimeout(3000);
+        } catch {}
+      }
+      if (!submitted) {
+        // Fallback: try various submit button selectors
+        const submitBtns = [
+          "input[type='submit']", "button[type='submit']",
+          "input[name='Submit']", "button[name='Submit']",
+          "input[value*='发']", "button:has-text('发')",
+          "a:has-text('发')",
+        ];
+        for (const sel of submitBtns) {
+          const btn = p.locator(sel).first();
+          if ((await btn.count()) > 0) {
+            try { await btn.click(); await p.waitForTimeout(3000); submitted = true; break; } catch {}
+          }
+        }
+      }
+      if (!submitted) {
         return { success: false, error: "未找到发布按钮，请直接在 NGA 回复" };
       }
-      await submitBtn.click();
       // Wait for redirect to thread page (success) or stay on form (failure)
       await p.waitForTimeout(4000);
 

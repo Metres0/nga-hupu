@@ -6,11 +6,12 @@ import { useAuthStore } from "@/store/auth-store";
 
 interface ReplyFormProps {
   tid: number;
+  fid: number;
   pid: number;
   replyToAuthor?: string;
 }
 
-export default function ReplyForm({ tid, pid, replyToAuthor }: ReplyFormProps) {
+export default function ReplyForm({ tid, fid, pid, replyToAuthor }: ReplyFormProps) {
   const { closeReply } = useReplyStore();
   const { loggedIn, openLoginDialog } = useAuthStore();
   const [content, setContent] = useState("");
@@ -67,7 +68,7 @@ export default function ReplyForm({ tid, pid, replyToAuthor }: ReplyFormProps) {
     try {
       const resp = await fetch(`/api/v1/threads/${tid}/reply`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pid, content: content.trim(), subject: subject.trim() || undefined }),
+        body: JSON.stringify({ pid, fid, content: content.trim(), subject: subject.trim() || undefined }),
       });
       const data = await resp.json();
       if (data.success) { setSuccess(true); } else { setError(data.error || "回复失败"); }

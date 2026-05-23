@@ -11,7 +11,7 @@ export async function POST(
   const piped = pipeline(async (req: Request) => {
     const tid = parseInt(params.tid);
     const body = await req.json().catch(() => ({}));
-    const { pid = 0, content, subject } = body;
+    const { pid = 0, fid = 0, content, subject } = body;
 
     if (!content || typeof content !== "string" || content.trim().length < 2) {
       return NextResponse.json({ success: false, error: "请输入回复内容" }, { status: 400 });
@@ -20,7 +20,7 @@ export async function POST(
       return NextResponse.json({ success: false, error: "内容过长 (最多5000字)" }, { status: 400 });
     }
 
-    const result = await scrapeReplyToPost(tid, pid, content.trim(), subject?.trim() || undefined);
+    const result = await scrapeReplyToPost(tid, fid, pid, content.trim(), subject?.trim() || undefined);
     if (result.success) {
       return NextResponse.json({ success: true });
     }

@@ -235,7 +235,7 @@ export default function ThreadPageClient({ tid: propTid, fid: propFid, page: pro
         </div>
       </div>
       {openPid !== null && (
-        <ReplyForm tid={tid} pid={openPid} replyToAuthor={store.posts.find((p: any) => p.pid === openPid)?.author} />
+        <ReplyForm tid={tid} fid={fid} pid={openPid} replyToAuthor={store.posts.find((p: any) => p.pid === openPid)?.author} />
       )}
     </div>
   );
