@@ -231,48 +231,87 @@ export async function scrapeReplyToPost(
   }
 
   return withRetry(async () => {
-    // Use mobile page + nuke.php reply endpoint (same pattern as login)
-    const p = await newPage(cookieStr);
+    const p = await newDesktopPage(cookieStr);
     try {
-      const url = `https://bbs.nga.cn/nuke.php?__lib=post&__act=reply&fid=${fid}&tid=${tid}`;
-      await p.goto(url, { waitUntil: "domcontentloaded", timeout: 15000 });
+      const url = `https://bbs.nga.cn/read.php?tid=${tid}`;
+      await p.goto(url, { waitUntil: "networkidle", timeout: 20000 });
       await p.waitForTimeout(1000);
 
       if (p.url().includes("login")) {
         return { success: false, error: "登录已过期，请重新登录" };
       }
 
-      // Find and fill content textarea
-      let ta = p.locator("textarea[name='atc_content']").first();
-      if ((await ta.count()) === 0) ta = p.locator("textarea").first();
-      if ((await ta.count()) === 0) return { success: false, error: "未找到回复输入框" };
-      await ta.fill(content);
+      // Scroll to bottom where reply form lives
+      await p.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      await p.waitForTimeout(500);
 
-      // Subject
-      if (subject) {
-        const si = p.locator("input[name='atc_title']").first();
-        if ((await si.count()) > 0) await si.fill(subject);
+      // Find reply textarea — click "回复" first if needed
+      let ta = p.locator("textarea").first();
+      if ((await ta.count()) === 0) {
+        const replyLink = p.locator('a:has-text("回复")').first();
+        if ((await replyLink.count()) > 0) {
+          await replyLink.click();
+          await p.waitForTimeout(1000);
+          ta = p.locator("textarea").first();
+        }
+      }
+      if ((await ta.count()) === 0) {
+        return { success: false, error: "未找到回复输入框，请在原始网页回复" };
       }
 
-      // Click submit — nuke.php form has standard buttons
-      const btn = p.locator("input[type='submit'], button[type='submit']").first();
-      if ((await btn.count()) === 0) {
+      // Fill AND dispatch events so NGA JS detects the input
+      await ta.fill(content);
+      await ta.evaluate((el: any) => {
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+
+      // Submit: find button near the textarea (inside same form or sibling)
+      // Prefer buttons with text "发" or "回" to avoid hitting nav buttons
+      const btn = p.locator([
+        'input[type="submit"][value*="发"]',
+        'input[type="submit"][value*="回"]',
+        'button:has-text("发"):not(:has-text("发送"))',
+        'button[type="submit"]',
+        'input[type="submit"]',
+      ].join(", ")).first();
+      if ((await btn.count()) > 0) {
+        await btn.click();
+      } else {
         return { success: false, error: "未找到发布按钮" };
       }
-      await btn.click();
-      await p.waitForTimeout(5000);
+
+      // Wait for navigation after post — NGA redirects to thread page on success
+      try {
+        await p.waitForURL(`**/read.php?tid=${tid}*`, { timeout: 10000 });
+        await p.waitForTimeout(1000);
+      } catch {
+        // May have stayed on same page with error message
+      }
 
       const body = await p.content();
-      const curUrl = p.url();
+      const finalUrl = p.url();
 
-      // Check for common NGA reply errors
-      if (body.includes("发帖间隔")) return { success: false, error: "发帖间隔限制，请等待后再试" };
-      if (body.includes("验证码") || body.includes("captcha")) return { success: false, error: "需要验证码" };
-      if (body.includes("未登录") || curUrl.includes("login")) return { success: false, error: "登录已过期" };
-      if (body.includes("权限不足") || body.includes("不能")) return { success: false, error: "无发帖权限" };
+      // Check errors
+      if (body.includes("发帖间隔") || body.includes("限制")) {
+        return { success: false, error: "发帖间隔限制，请等待后再试" };
+      }
+      if (body.includes("验证码") || body.includes("captcha")) {
+        return { success: false, error: "需要验证码" };
+      }
+      if (finalUrl.includes("login")) {
+        return { success: false, error: "登录已过期" };
+      }
 
-      // Success: page should show "发帖成功" or redirect
-      console.log("[Reply] URL after submit:", curUrl.substring(0, 100));
+      // Success: redirected back to thread page
+      if (finalUrl.includes(`read.php?tid=${tid}`)) {
+        return { success: true };
+      }
+      // Check for success text
+      if (body.includes("发帖成功") || body.includes("回复成功") || body.includes("操作成功")) {
+        return { success: true };
+      }
+      console.log("[Reply] URL after submit:", finalUrl.substring(0, 100));
       return { success: true };
     } finally {
       await p.context().close();
