@@ -1,6 +1,6 @@
-# NGA 镜像站 v5.7 — 马卡龙风格阅读器
+# NGA 镜像站 v5.8 — 马卡龙风格阅读器
 
-基于 FluxDO 架构理念，从 NGA (bbs.nga.cn) 抓取论坛帖子，Material Design 3 马卡龙 UI 呈现。预抓取 + SQLite 缓存，网页加载 <50ms。插件化板块接入，366 全站板块树。18 层跨进程防御体系。
+基于 FluxDO 架构理念，从 NGA (bbs.nga.cn) 抓取论坛帖子，Material Design 3 马卡龙 UI 呈现。预抓取 + SQLite 缓存，网页加载 <50ms。支持登录后回复、点赞/点踩、收藏原帖链接。366 全站板块树。18 层跨进程防御体系。
 
 ## 技术栈
 

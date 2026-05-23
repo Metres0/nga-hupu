@@ -1,4 +1,4 @@
-# NGA 镜像站 — 架构文档 v5.7
+# NGA 镜像站 — 架构文档 v5.8
 
 ## 项目概述
 
@@ -214,7 +214,7 @@ CLI 按 `replyCount / 20` 计算总页数，最多抓 5 页。posts 表有 `page
 
 ## 最新更新 (2026-05-23)
 
-- **v5.7**: SSR 登录检测修复 (cookies→getSession) + 单列布局 + BBCode JS 清理
+- **v5.8**: 交互功能 — 回复(BBCode)+点赞/点踩+收藏NGA原帖链接+GBK编码修复
 - **v5.6**: 防御冲突解决 — jitter→retry-only + PRAGMA user_version + 自适应熔断
 - **v5.5**: 物理突破 — 批量预取管道 + SWR 指纹比对 + 高楼帖末页预取
 - **v5.4**: 极限压榨 — useRef 同步 TTI + 正则快速路径 + Playwright 熔断降级
