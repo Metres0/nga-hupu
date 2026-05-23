@@ -264,14 +264,28 @@ export async function scrapeReplyToPost(
         if ((await si.count()) > 0) await si.fill(subject);
       }
 
-      // Click submit
-      const btn = p.locator("input[type='submit'], button[type='submit']").first();
+      // Click submit — try all possible NGA button variants
+      let btn = p.locator("input[type='submit'], button[type='submit']").first();
+      if ((await btn.count()) === 0) btn = p.locator("button, input[type='button'], a.btn").first();
       if ((await btn.count()) === 0) {
-        return { success: false, error: "未找到发布按钮" };
+        // Last resort: use JavaScript to find and click the submit element
+        await p.evaluate(() => {
+          const el = document.querySelector("input[type='submit'], button[type='submit'], button, input[type='button'], [onclick*='post'], [onclick*='submit']") as HTMLElement;
+          if (el) { el.click(); return true; }
+          // Try form submit
+          const f = document.querySelector("form");
+          if (f) { f.submit(); return true; }
+          return false;
+        });
+        if ((await btn.count()) === 0) { // Still failing, try one more
+          return { success: false, error: "未找到发布按钮" };
+        }
+        await p.waitForTimeout(5000);
+      } else {
+        await btn.scrollIntoViewIfNeeded();
+        await btn.click();
+        await p.waitForTimeout(5000);
       }
-      await btn.scrollIntoViewIfNeeded();
-      await btn.click();
-      await p.waitForTimeout(5000);
 
       const body = await p.content();
       if (body.includes("验证码") || body.includes("captcha")) {
