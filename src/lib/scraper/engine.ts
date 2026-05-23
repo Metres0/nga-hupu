@@ -230,4 +230,115 @@ export async function scrapeForumInfo(
   });
 }
 
+// ─── Reply to post ───
+
+interface ReplyResult { success: boolean; error?: string; }
+
+export async function scrapeReplyToPost(
+  tid: number,
+  pid: number,
+  content: string,
+  subject?: string
+): Promise<ReplyResult> {
+  const cookieStr = getDecryptedCookies() ?? undefined;
+  if (!cookieStr) return { success: false, error: "请先登录 NGA 账号" };
+
+  return withRetry(async () => {
+    const p = await newPage(cookieStr);
+    try {
+      const url = `https://bbs.nga.cn/read.php?tid=${tid}&page=e`;
+      await p.goto(url, { waitUntil: "domcontentloaded", timeout: 15000 });
+      await skipAdIfPresent(p);
+
+      // Locate the fast reply textarea
+      const textarea = p.locator("textarea#postcontent, textarea[name='postcontent'], textarea").first();
+      if ((await textarea.count()) === 0) {
+        return { success: false, error: "未找到回复输入框，请直接在 NGA 回复" };
+      }
+      await textarea.fill(content);
+
+      if (subject) {
+        const subjInput = p.locator("input#postsubject, input[name='postsubject']").first();
+        if ((await subjInput.count()) > 0) await subjInput.fill(subject);
+      }
+
+      // Click submit
+      const submitBtn = p.locator([
+        'button:has-text("发布")', 'button:has-text("发表")', 'button:has-text("提交")',
+        'input[type="submit"][value*="发"]', 'input[type="submit"][value*="提"]',
+        'button[type="submit"]:has-text("回")',
+      ].join(", ")).first();
+      if ((await submitBtn.count()) === 0) {
+        return { success: false, error: "未找到发布按钮" };
+      }
+      await submitBtn.click();
+      await p.waitForTimeout(3000);
+
+      // Check result
+      const currentUrl = p.url();
+      if (currentUrl.includes("error") || currentUrl.includes("nuke")) {
+        const body = await p.content();
+        if (body.includes("验证码") || body.includes("captcha")) {
+          return { success: false, error: "NGA 要求验证码，请直接在 NGA 回复" };
+        }
+        return { success: false, error: "回复失败，可能触发了 NGA 风控" };
+      }
+
+      return { success: true };
+    } finally {
+      await p.context().close();
+    }
+  });
+}
+
+// ─── Like / Dislike ───
+
+interface LikeResult { success: boolean; newCount?: number; error?: string; }
+
+export async function scrapeLikeAction(
+  tid: number,
+  pid: number,
+  action: "agree" | "disagree"
+): Promise<LikeResult> {
+  const cookieStr = getDecryptedCookies() ?? undefined;
+  if (!cookieStr) return { success: false, error: "请先登录 NGA 账号" };
+
+  // Fast path: try HTTP GET with cookie
+  try {
+    const resp = await fetch(
+      `https://bbs.nga.cn/nuke.php?__lib=agree&__act=${action}&tid=${tid}&pid=${pid}&__output=8`,
+      { headers: { Cookie: cookieStr, "User-Agent": process.env.NGA_MOBILE_UA || "Nga_Official/9.9.9" } }
+    );
+    if (resp.ok) {
+      const text = await resp.text();
+      if (text.includes("success") || text.includes('"error":0')) {
+        return { success: true };
+      }
+    }
+  } catch {}
+
+  // Fallback: Playwright
+  return withRetry(async () => {
+    const p = await newPage(cookieStr);
+    try {
+      await p.goto(`https://bbs.nga.cn/read.php?tid=${tid}&page=1`, {
+        waitUntil: "domcontentloaded", timeout: 15000,
+      });
+      await skipAdIfPresent(p);
+
+      const agreeBtn = p.locator(
+        `a[href*="agree"][href*="pid=${pid}"], a[onclick*="agree"][onclick*="${pid}"]`
+      ).first();
+      if ((await agreeBtn.count()) === 0) {
+        return { success: false, error: "未找到点赞按钮" };
+      }
+      await agreeBtn.click();
+      await p.waitForTimeout(2000);
+      return { success: true };
+    } finally {
+      await p.context().close();
+    }
+  });
+}
+
 export { closeBrowser };

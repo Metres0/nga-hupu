@@ -1,5 +1,43 @@
 # Changelog
 
+## v5.8 (2026-05-23) — Interactive Features
+
+### Added (3 Major Features)
+
+- **回复帖子**: 登录后可通过 PostCard 的"回复"按钮发表回复。内嵌 BBCode 富文本编辑器 (加粗/斜体/下划线/颜色/引用/图片/链接/代码)。Playwright 仿真 NGA 回复表单提交
+  - `engine.ts`: +`scrapeReplyToPost()` (~60行)
+  - `api/v1/threads/[tid]/reply/route.ts`: POST 路由 (新建)
+  - `reply-store.ts`: Zustand store (新建)
+  - `ReplyForm.tsx`: BBCode 富文本编辑器 (新建, ~110行)
+- **点赞/点踩**: PostCard 操作栏新增可交互点赞(♥)和点踩(♥↓)按钮。乐观更新 + NGA API 投票
+  - `engine.ts`: +`scrapeLikeAction()` (~40行, fetch快路径 + Playwright保底)
+  - `api/v1/threads/[tid]/posts/[pid]/like/route.ts`: POST 路由 (新建)
+  - `PostCard.tsx`: +`handleReply`/`handleVote` + `useState` 乐观更新
+  - `types.ts`: Post +`userLiked`/`userDisliked` 字段
+- **收藏链接改为 NGA 原帖**: FavoritesDialog 和 favorites/page 的链接从 `/forum/{fid}/thread/{tid}` 改为 `https://bbs.nga.cn/read.php?tid={tid}`
+  - `FavoritesDialog.tsx`: 2处链接更新
+  - `favorites/page.tsx`: 2处链接更新
+
+### Changed
+
+- `types.ts`: Post +2字段
+- `engine.ts`: +2函数 (~100行)
+- `PostCard.tsx`: PostFooter 4按钮→全部可交互
+- `ThreadPageClient.tsx`: 集成 ReplyForm
+- `FavoritesDialog.tsx`: NGA 外部链接
+- `favorites/page.tsx`: NGA 外部链接
+
+### New Files (5)
+
+| 文件 | 用途 |
+|------|------|
+| `api/v1/threads/[tid]/reply/route.ts` | 回复提交 API |
+| `api/v1/threads/[tid]/posts/[pid]/like/route.ts` | 点赞/点踩 API |
+| `store/reply-store.ts` | 回复状态管理 |
+| `components/widgets/ReplyForm.tsx` | BBCode 回复编辑器 |
+
+---
+
 ## v5.7 (2026-05-23) — Auth & Layout Fix
 
 ### Fixed

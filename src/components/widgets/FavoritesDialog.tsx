@@ -26,7 +26,7 @@ export default function FavoritesDialog({ onClose }: { onClose: () => void }) {
 
           {threads.map((t) => (
             <div key={t.tid} className="flex items-center group/item rounded-xl hover:bg-[var(--surface-hover)] transition-all">
-              <Link href={`/forum/${t.fid}/thread/${t.tid}`} onClick={onClose}
+              <Link href={`https://bbs.nga.cn/read.php?tid=${t.tid}`} target="_blank" rel="noopener" onClick={onClose}
                 className="flex-1 flex items-center gap-2.5 px-3 py-2.5 text-sm no-underline text-[var(--text-secondary)] min-w-0">
                 <span className="text-amber-400 shrink-0">★</span>
                 <span className="truncate">{t.title}</span>
@@ -42,7 +42,7 @@ export default function FavoritesDialog({ onClose }: { onClose: () => void }) {
 
           {posts.map((p) => (
             <div key={p.pid} className="flex items-center group/item rounded-xl hover:bg-[var(--surface-hover)] transition-all">
-              <Link href={`/forum/thread/${p.tid}`} onClick={onClose}
+              <Link href={`https://bbs.nga.cn/read.php?tid=${p.tid}&pid=${p.pid}`} target="_blank" rel="noopener" onClick={onClose}
                 className="flex-1 flex items-center gap-2.5 px-3 py-2.5 text-sm no-underline text-[var(--text-secondary)] min-w-0">
                 <span className="text-purple-400 shrink-0 text-xs">◆</span>
                 <span className="truncate">{p.content.substring(0, 60)}</span>

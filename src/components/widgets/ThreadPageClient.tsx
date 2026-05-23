@@ -8,9 +8,11 @@ import { GlassBadge } from "@/components/ui/GlassBadge";
 import { GlassButton } from "@/components/ui/GlassButton";
 import GlassNav from "@/components/widgets/GlassNav";
 import { GlassSkeletonList } from "@/components/ui/GlassSkeleton";
+import ReplyForm from "@/components/widgets/ReplyForm";
 import { buildReplyTree, flattenTree } from "@/lib/reply-tree";
 import { useCacheStore, getCacheKey } from "@/store/cache-store";
 import { useThreadStore } from "@/store/thread-store";
+import { useReplyStore } from "@/store/reply-store";
 import { useScrollRestore } from "@/lib/scroll-restore";
 import { markAsRead } from "@/lib/read-tracking";
 
@@ -133,6 +135,7 @@ export default function ThreadPageClient({ tid: propTid, fid: propFid, page: pro
   const treeNodes = buildReplyTree(store.posts);
   const flatNodes = flattenTree(treeNodes);
   const [filter, setFilter] = useState("");
+  const openPid = useReplyStore((s) => s.openPid);
 
   const filtered = filter.trim()
     ? flatNodes.filter((n) =>
@@ -191,6 +194,13 @@ export default function ThreadPageClient({ tid: propTid, fid: propFid, page: pro
           <div className="text-center py-16 text-[var(--text-tertiary)]">{filter ? "无匹配内容" : "暂无回复"}</div>
         ) : (
           <div className="space-y-3">
+            {openPid !== null && (
+              <ReplyForm
+                tid={tid}
+                pid={openPid}
+                replyToAuthor={store.posts.find((p: any) => p.pid === openPid)?.author}
+              />
+            )}
             {filter.match(/^\d+$/) ? filtered.map(({ post }) => (
               <PostCard key={post.pid} post={post} isFirst={post.floor === 0} allPosts={store.posts} depth={0} />
             )) : filtered.map(({ post, depth }) => (

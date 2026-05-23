@@ -2,9 +2,12 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { useState } from "react";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 import type { Post } from "@/lib/types";
 import { useFavoriteStore } from "@/store/favorite-store";
+import { useReplyStore } from "@/store/reply-store";
+import { useAuthStore } from "@/store/auth-store";
 
 const ImageGallery = dynamic(() => import("./ImageGallery"), { ssr: true });
 const ChunkedPostRenderer = dynamic(() => import("./ChunkedPostRenderer"), { ssr: true });
@@ -108,21 +111,62 @@ function PostContent({ post }: { post: Post }) {
 
 function PostFooter({ post }: { post: Post }) {
   const faved = useFavoriteStore.getState().isPostFavorited(post.pid);
+  const openReply = useReplyStore((s) => s.openReply);
+  const openLogin = useAuthStore((s) => s.openLoginDialog);
+  const loggedIn = useAuthStore((s) => s.loggedIn);
+
+  const [liked, setLiked] = useState(post.userLiked || false);
+  const [disliked, setDisliked] = useState(post.userDisliked || false);
+  const [likeCount, setLikeCount] = useState(post.likes || 0);
+  const [voteLoading, setVoteLoading] = useState(false);
+
+  function handleReply() {
+    if (!loggedIn) { openLogin(); return; }
+    openReply(post.pid);
+  }
+
+  async function handleVote(action: "agree" | "disagree") {
+    if (!loggedIn) { openLogin(); return; }
+    if (voteLoading) return;
+    if (action === "agree" && liked) return;
+    if (action === "disagree" && disliked) return;
+
+    setVoteLoading(true);
+    if (action === "agree") { setLiked(true); setLikeCount((c) => c + 1); }
+    else { setDisliked(true); }
+
+    try {
+      await fetch(`/api/v1/threads/${post.tid}/posts/${post.pid}/like`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+    } catch {}
+    finally { setVoteLoading(false); }
+  }
+
   return (
     <div className="flex items-center gap-3 mt-3 pt-3 border-t border-[var(--border-subtle)] text-[var(--text-tertiary)]">
-      <button className="flex items-center gap-1.5 text-xs hover:text-[var(--accent-blue)] transition-colors ripple rounded-lg px-2 py-1">
+      <button onClick={handleReply}
+        className="flex items-center gap-1.5 text-xs hover:text-[var(--accent-blue)] transition-colors ripple rounded-lg px-2 py-1">
         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/>
         </svg>
         回复
       </button>
-      <button className="flex items-center gap-1.5 text-xs hover:text-[var(--accent-red)] transition-colors ripple rounded-lg px-2 py-1">
-        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <button onClick={() => handleVote("agree")}
+        className={`flex items-center gap-1.5 text-xs transition-colors rounded-lg px-2 py-1 ${liked ? "text-[var(--accent-red)]" : "hover:text-[var(--accent-red)]"}`}>
+        <svg className="w-3.5 h-3.5" fill={liked ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"/>
         </svg>
-        {post.likes > 0 ? post.likes : null}
+        {likeCount > 0 ? likeCount : null}
       </button>
-      <button className="flex items-center gap-1.5 text-xs hover:text-[var(--accent-green)] transition-colors ripple rounded-lg px-2 py-1 ml-auto">
+      <button onClick={() => handleVote("disagree")}
+        className={`flex items-center gap-1.5 text-xs transition-colors rounded-lg px-2 py-1 ${disliked ? "text-blue-500" : "hover:text-blue-400"}`}>
+        <svg className="w-3.5 h-3.5 rotate-180" fill={disliked ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"/>
+        </svg>
+      </button>
+      <button className={`flex items-center gap-1.5 text-xs transition-colors rounded-lg px-2 py-1 ml-auto`}>
         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z"/>
         </svg>

@@ -35,6 +35,8 @@ export interface Post {
   images: string[];
   attachments: Attachment[];
   likes: number;
+  userLiked?: boolean;
+  userDisliked?: boolean;
 }
 
 export interface Attachment {
