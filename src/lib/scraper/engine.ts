@@ -233,33 +233,41 @@ export async function scrapeReplyToPost(
   return withRetry(async () => {
     const p = await newPage(cookieStr);
     try {
-      // Strategy A: Use dedicated reply page (post.php)
-      const url = `https://bbs.nga.cn/post.php?action=reply&fid=${fid}&tid=${tid}`;
+      // Strategy A: Thread page fast reply (most reliable)
+      const url = `https://bbs.nga.cn/read.php?tid=${tid}&page=e`;
       await p.goto(url, { waitUntil: "domcontentloaded", timeout: 15000 });
       await skipAdIfPresent(p);
+      await p.waitForTimeout(1000);
 
       // Check for login redirect
       const pageUrl = p.url();
-      if (pageUrl.includes("login") || pageUrl.includes("nuke.php") && !pageUrl.includes("post.php")) {
+      if (pageUrl.includes("login") || pageUrl.includes("nuke.php") && !pageUrl.includes("read.php")) {
         return { success: false, error: "登录已过期，请重新登录 NGA" };
       }
 
-      // Find visible textarea on the reply page
-      const textareaSels = [
-        "textarea[name='atc_content']",
-        "textarea[name='post_content']",
-        "textarea#postcontent",
-        "textarea",
-      ];
-      let textarea = p.locator("xpath=.");
-      for (const sel of textareaSels) {
-        const el = p.locator(sel).first();
-        if ((await el.count()) > 0) { textarea = el; break; }
+      // Find fast-reply textarea at bottom of thread page
+      let textarea = p.locator("textarea#fastpostcontent, textarea[name='atc_content']").first();
+      if ((await textarea.count()) === 0) {
+        // Try clicking "快速回复" to expand
+        const fastReplyBtn = p.locator('a:has-text("快速回复"), #fastpost, a[title*="快速"]').first();
+        if ((await fastReplyBtn.count()) > 0) {
+          await fastReplyBtn.click();
+          await p.waitForTimeout(500);
+          textarea = p.locator("textarea").first();
+        }
+      }
+      if ((await textarea.count()) === 0) {
+        // Strategy B: Try nuke.php reply endpoint
+        const nukeUrl = `https://bbs.nga.cn/nuke.php?__lib=post&__act=reply&fid=${fid}&tid=${tid}`;
+        await p.goto(nukeUrl, { waitUntil: "domcontentloaded", timeout: 15000 });
+        await p.waitForTimeout(500);
+        textarea = p.locator("textarea[name='atc_content'], textarea").first();
       }
       if ((await textarea.count()) === 0) {
         return { success: false, error: "未找到回复输入框，请直接在 NGA 回复" };
       }
-      // Fill via JavaScript (bypass visibility checks)
+
+      // Fill via JavaScript
       await textarea.evaluate((el: any, val: string) => {
         const ta = el as HTMLTextAreaElement;
         ta.value = val;
@@ -270,65 +278,48 @@ export async function scrapeReplyToPost(
       if (subject) {
         const subjInput = p.locator("input[name='atc_title'], input[name='post_subject']").first();
         if ((await subjInput.count()) > 0) {
-          await subjInput.evaluate((el: any, val: string) => {
-            (el as HTMLInputElement).value = val;
-          }, subject);
+          await subjInput.fill(subject);
         }
       }
-      // Submit: try form submit directly (most reliable), then button clicks
-      const form = p.locator("form[name='postform'], form[method='post'], form").first();
-      let submitted = false;
-      if ((await form.count()) > 0) {
-        try {
-          await form.evaluate((el: any) => {
-            const f = el as HTMLFormElement;
-            // Ensure all required hidden fields are present
-            f.submit();
-          });
-          submitted = true;
-          await p.waitForTimeout(3000);
-        } catch {}
-      }
-      if (!submitted) {
-        // Fallback: try various submit button selectors
-        const submitBtns = [
-          "input[type='submit']", "button[type='submit']",
-          "input[name='Submit']", "button[name='Submit']",
-          "input[value*='发']", "button:has-text('发')",
-          "a:has-text('发')",
-        ];
-        for (const sel of submitBtns) {
-          const btn = p.locator(sel).first();
-          if ((await btn.count()) > 0) {
-            try { await btn.click(); await p.waitForTimeout(3000); submitted = true; break; } catch {}
-          }
-        }
-      }
-      if (!submitted) {
-        return { success: false, error: "未找到发布按钮，请直接在 NGA 回复" };
-      }
-      // Wait for redirect to thread page (success) or stay on form (failure)
-      await p.waitForTimeout(4000);
 
+      // Submit: try form submit first, then button click
+      let submitted = false;
+      const form = p.locator("form").first();
+      if ((await form.count()) > 0) {
+        try { await form.evaluate((el: any) => (el as HTMLFormElement).submit()); submitted = true; } catch {}
+      }
+      if (!submitted) {
+        const btns = ["input[type='submit']", "button[type='submit']", "button:has-text('发')", "a:has-text('发')"];
+        for (const sel of btns) {
+          const btn = p.locator(sel).first();
+          if ((await btn.count()) > 0) { try { await btn.click(); submitted = true; break; } catch {} }
+        }
+      }
+      if (!submitted) return { success: false, error: "未找到发布按钮" };
+
+      await p.waitForTimeout(4000);
       const finalUrl = p.url();
-      // Success: redirected back to read.php?tid=... (not still on post.php)
-      if (finalUrl.includes(`read.php?tid=${tid}`) || !finalUrl.includes("post.php")) {
-        // Verify by checking for error messages on the page
+
+      // Success: redirected to read.php
+      if (finalUrl.includes(`read.php?tid=${tid}`) || finalUrl === url) {
         const body = await p.content();
         if (body.includes("验证码") || body.includes("captcha")) {
           return { success: false, error: "NGA 要求验证码，请直接在 NGA 回复" };
         }
-        if (body.includes("发帖间隔") || body.includes("30 秒") || body.includes("限制")) {
+        if (body.includes("发帖间隔") || body.includes("限制")) {
           return { success: false, error: "NGA 发帖间隔限制，请稍后重试" };
         }
         return { success: true };
       }
-      // Still on post.php → check for error messages
+      if (finalUrl.includes("login") || finalUrl.includes("nuke.php")) {
+        return { success: false, error: "登录已过期，请重新登录 NGA" };
+      }
+
       const body = await p.content();
       if (body.includes("验证码") || body.includes("captcha")) {
         return { success: false, error: "NGA 要求验证码，请直接在 NGA 回复" };
       }
-      if (body.includes("未登录") || body.includes("登录")) {
+      if (body.includes("未登录")) {
         return { success: false, error: "登录已过期，请重新登录 NGA" };
       }
       return { success: false, error: "回复失败，请直接在 NGA 回复" };
