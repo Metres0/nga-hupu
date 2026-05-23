@@ -14,7 +14,6 @@ import { useForumStore } from "@/store/forum-store";
 import { useAuthStore } from "@/store/auth-store";
 import { useScrollRestore } from "@/lib/scroll-restore";
 import { usePullToRefresh } from "@/lib/pull-to-refresh";
-import type { Thread } from "@/lib/types";
 
 interface ForumPageProps {
   fid: number;
@@ -26,11 +25,31 @@ export default function ForumPageClient({ fid: propFid, initialThreads, initialM
   const params = useParams(); const searchParams = useSearchParams();
   const fid = propFid || parseInt(params.fid as string); const currentPage = parseInt(searchParams.get("page") || "1");
   const store = useForumStore(); const plugin = getPlugin(fid);
-  const loadedRef = useRef(""); const prefetchedRef = useRef(new Set<string>());
+  const loadedRef = useRef("");
   const openLoginDialog = useAuthStore((s) => s.openLoginDialog);
   const [authError, setAuthError] = useState(false);
-  const [ssrUsed, setSsrUsed] = useState(false);
   useScrollRestore(`forum:${fid}`);
+
+  // Synchronous SSR seed injection — executes during render, not useEffect
+  // Eliminates the ~300ms hydration gap where forumStore was empty
+  const seeded = useRef(false);
+  if (!seeded.current && initialThreads && currentPage === 1) {
+    seeded.current = true; // Lock first: prevent concurrent mode re-entry
+    const cacheKey = getCacheKey("forum", fid, 1);
+    useCacheStore.getState().set(cacheKey, {
+      data: initialThreads,
+      totalPages: initialMeta?.totalPages || 1,
+      hasMore: (initialMeta?.totalPages || 1) > 1,
+      forum: { name: initialMeta?.forumName || "" },
+      cached: true,
+    });
+    useForumStore.getState().setThreads(initialThreads);
+    useForumStore.getState().setTotalPages(initialMeta?.totalPages || 1);
+    useForumStore.getState().setForumName(initialMeta?.forumName || "");
+    useForumStore.getState().setFid(fid);
+    useForumStore.getState().setLoading(false);
+    useForumStore.getState().setCached(true);
+  }
 
   const refreshPage = useCallback(async () => {
     const fa = useForumStore.getState();
@@ -48,45 +67,42 @@ export default function ForumPageClient({ fid: propFid, initialThreads, initialM
 
   const { containerRef, pulling, refreshing } = usePullToRefresh({ onRefresh: refreshPage });
 
-  // SSR initial data injection — avoids loading spinner on first render
-  useEffect(() => {
-    if (initialThreads && !ssrUsed && currentPage === 1) {
-      setSsrUsed(true);
-      const fa = useForumStore.getState();
-      fa.setThreads(initialThreads);
-      fa.setTotalPages(initialMeta?.totalPages || 1);
-      fa.setForumName(initialMeta?.forumName || "");
-      fa.setFid(fid);
-      fa.setLoading(false);
-      fa.setCached(true);
-      // Also write to cache-store so subsequent navigations hit L1
-      const cacheKey = getCacheKey("forum", fid, currentPage);
-      useCacheStore.getState().set(cacheKey, {
-        data: initialThreads,
-        totalPages: initialMeta?.totalPages || 1,
-        hasMore: (initialMeta?.totalPages || 1) > 1,
-        forum: { name: initialMeta?.forumName || "" },
-        cached: true,
-      });
-    }
-  }, [initialThreads, ssrUsed, currentPage, fid, initialMeta]);
-
   useEffect(() => {
     const loadKey = `${fid}:${currentPage}`; if (loadedRef.current === loadKey) return; loadedRef.current = loadKey;
     const fa = useForumStore.getState(); fa.setFid(fid); setAuthError(false);
     const cacheKey = getCacheKey("forum", fid, currentPage);
     const ca = useCacheStore.getState(); const cached = ca.get<any>(cacheKey);
     if (cached) {
-      // Use cached data immediately
+      // Use cached data immediately (includes SSR-injected data from useEffect#1)
       fa.setThreads(cached.data.data || cached.data || []);
       fa.setTotalPages(cached.data.totalPages || 1);
       fa.setHasMore(cached.data.hasMore || false);
       fa.setForumName(cached.data.forum?.name || "");
       fa.setCached(cached.data.cached || false);
       fa.setLoading(false); fa.setPageLoading(false);
-      // If stale, trigger background refresh (SWR pattern)
+      // If stale, trigger background SWR refresh with fingerprint guard
       if (cached.stale) {
-        ca.prefetch(`/api/v1/forums/${fid}?page=${currentPage}`, cacheKey);
+        ca.prefetch(`/api/v1/forums/${fid}?page=${currentPage}`, cacheKey)?.then((newData: any) => {
+          if (!newData?.data) return;
+          const fa = useForumStore.getState();
+          const oldTids = fa.threads?.slice(0, 5).map((t: any) => t.tid) || [];
+          const newTids = newData.data.slice(0, 5).map((t: any) => t.tid);
+          const sameTop = oldTids.length === newTids.length &&
+            oldTids.every((id: number, i: number) => id === newTids[i]);
+
+          if (sameTop) {
+            // Top 5 unchanged — only update metadata (zero layout shift)
+            fa.updateThreadMeta(
+              newData.data.map((t: any) => ({
+                tid: t.tid, replyCount: t.replyCount, lastReplyTime: t.lastReplyTime,
+              }))
+            );
+          } else {
+            fa.setThreads(newData.data);
+            fa.setTotalPages(newData.totalPages || 1);
+            fa.setHasMore(newData.hasMore || false);
+          }
+        }).catch(() => {});
       }
       return;
     }
@@ -106,16 +122,6 @@ export default function ForumPageClient({ fid: propFid, initialThreads, initialM
         if (!authError) { const fa = useForumStore.getState(); fa.setError(err.message); fa.setLoading(false); fa.setPageLoading(false); }
       });
   }, [fid, currentPage]);
-
-  useEffect(() => {
-    const threads = useForumStore.getState().threads; if (!threads || threads.length === 0) return;
-    const ca = useCacheStore.getState(); const top = threads.filter((t: Thread) => t.replyCount > 0).slice(0, 10);
-    for (const t of top) { const key = getCacheKey("thread", t.tid); if (prefetchedRef.current.has(key)) continue; prefetchedRef.current.add(key); if (!ca.get(key)?.data) ca.prefetch(`/api/v1/threads/${t.tid}?page=1`, key); }
-  }, [store.threads, currentPage]);
-
-  useEffect(() => {
-    return () => { useCacheStore.getState().evictByPrefix(`forum:${fid}`); };
-  }, [fid]);
 
   const requiresLogin = plugin?.requiresLogin || false;
 

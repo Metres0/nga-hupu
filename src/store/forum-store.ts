@@ -31,6 +31,7 @@ interface ForumState {
   setActiveCategory: (id: string) => void;
   setSortBy: (sort: ForumState["sortBy"]) => void;
   toggleSortOrder: () => void;
+  updateThreadMeta: (updates: Array<{ tid: number; replyCount: number; lastReplyTime: number }>) => void;
   reset: () => void;
 }
 
@@ -62,6 +63,15 @@ export const useForumStore = create<ForumState>((set) => ({
   setActiveCategory: (cat) => set({ activeCategory: cat }),
   setSortBy: (sort) => set({ sortBy: sort }),
   toggleSortOrder: () => set((s) => ({ sortAsc: !s.sortAsc })),
+  updateThreadMeta: (updates) =>
+    set((s) => {
+      const cur = [...s.threads];
+      for (const u of updates) {
+        const idx = cur.findIndex((t) => t.tid === u.tid);
+        if (idx >= 0) cur[idx] = { ...cur[idx], replyCount: u.replyCount, lastReplyTime: u.lastReplyTime };
+      }
+      return { threads: cur };
+    }),
   reset: () =>
     set({
       threads: [],

@@ -9,30 +9,34 @@ export async function GET(
   const piped = pipeline(async (req: Request) => {
     const tid = parseInt(params.tid);
     const page = parseInt(new URL(req.url).searchParams.get("page") || "1");
+    const refresh = new URL(req.url).searchParams.get("refresh") === "1";
 
-    const cachedPosts = getCachedPosts(tid, 0, page);
-    if (cachedPosts && cachedPosts.length > 0) {
-      const pageInfo = getThreadPageInfo(tid);
-      return NextResponse.json(
-        {
-          thread: pageInfo ? {
-            tid, title: pageInfo.title, author: pageInfo.author,
-            replyCount: pageInfo.reply_count, pageCount: pageInfo.page_count,
-          } : { tid },
-          posts: cachedPosts.map((row: any) => ({
-            pid: row.pid, tid: row.tid, author: row.author,
-            authorId: row.author_id, content: row.content,
-            contentHtml: row.content_html, createTime: row.create_time,
-            replyTo: row.reply_to, floor: row.floor,
-            images: JSON.parse(row.images || "[]"),
-            attachments: JSON.parse(row.attachments || "[]"),
-            likes: row.likes,
-          })),
-          totalPages: pageInfo?.page_count ?? 1,
-          cached: true,
-        },
-        { headers: { "Cache-Control": "public, max-age=60, stale-while-revalidate=300" } }
-      );
+    // Skip cache when user explicitly requests refresh
+    if (!refresh) {
+      const cachedPosts = getCachedPosts(tid, 0, page);
+      if (cachedPosts && cachedPosts.length > 0) {
+        const pageInfo = getThreadPageInfo(tid);
+        return NextResponse.json(
+          {
+            thread: pageInfo ? {
+              tid, title: pageInfo.title, author: pageInfo.author,
+              replyCount: pageInfo.reply_count, pageCount: pageInfo.page_count,
+            } : { tid },
+            posts: cachedPosts.map((row: any) => ({
+              pid: row.pid, tid: row.tid, author: row.author,
+              authorId: row.author_id, content: row.content,
+              contentHtml: row.content_html, createTime: row.create_time,
+              replyTo: row.reply_to, floor: row.floor,
+              images: JSON.parse(row.images || "[]"),
+              attachments: JSON.parse(row.attachments || "[]"),
+              likes: row.likes,
+            })),
+            totalPages: pageInfo?.page_count ?? 1,
+            cached: true,
+          },
+          { headers: { "Cache-Control": "public, max-age=60, stale-while-revalidate=300" } }
+        );
+      }
     }
 
     const { dedupedScrape } = await import("@/lib/cache/db");

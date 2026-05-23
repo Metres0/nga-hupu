@@ -22,6 +22,7 @@ interface PendingLogin {
   method: "xpath" | "legacy" | "main" | "rsa";
   checkCodeId?: string;
   encryptedPW?: string;
+  _captchaCookies?: any[];
 }
 
 const pendingLogins = new Map<string, PendingLogin>();
@@ -124,7 +125,7 @@ export async function startLoginWithXPath(username: string, password: string, sa
 
   try {
     await page.goto(NGA_LOGIN_NUKE, { waitUntil: "load", timeout: LOGIN_NAV_TIMEOUT });
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(1000);
 
     // Target the login iframe (#iff) which embeds account_copy.html
     const loginFrame = page.frameLocator("#iff");
@@ -193,7 +194,7 @@ export async function startLoginWithXPath(username: string, password: string, sa
       return { success: false, error: "无法找到登录按钮，请刷新重试" };
     }
 
-    await page.waitForTimeout(5000);
+    await page.waitForTimeout(2000);
 
     const url = page.url();
     if (!url.includes("login") && !url.includes("nuke")) {
@@ -264,7 +265,7 @@ export async function verifyCaptchaWithXPath(sessionId: string, captchaCode: str
 
     if ((await continueBtn.count()) > 0) {
       await continueBtn.click();
-      await page.waitForTimeout(5000);
+      await page.waitForTimeout(2000);
     }
 
     const url = page.url();
@@ -471,7 +472,7 @@ export async function startLoginFromMain(username: string, password: string, sav
       return { success: false, error: "无法找到登录按钮" };
     }
 
-    await page.waitForTimeout(5000);
+    await page.waitForTimeout(2000);
 
     const url = page.url();
     if (!url.includes("login")) {
@@ -519,7 +520,7 @@ export async function verifyCaptchaFromMain(sessionId: string, captchaCode: stri
     } catch {}
     if ((await continueBtn.count()) > 0) {
       await continueBtn.click();
-      await page.waitForTimeout(5000);
+      await page.waitForTimeout(2000);
     }
 
     const url = page.url();
@@ -618,7 +619,7 @@ export async function startLoginLegacy(username: string, password: string, saveC
     }
 
     await loginBtn.click();
-    await page.waitForTimeout(5000);
+    await page.waitForTimeout(2000);
 
     const url = page.url();
     if (!url.includes("login") && !url.includes("nuke.php")) {
@@ -665,7 +666,7 @@ export async function verifyCaptchaLegacy(sessionId: string, captchaCode: string
     ].join(", ")).first();
     if ((await continueBtn.count()) > 0) {
       await continueBtn.click();
-      await page.waitForTimeout(5000);
+      await page.waitForTimeout(2000);
     }
 
     const url = page.url();
@@ -787,9 +788,9 @@ export async function startLoginRSA(username: string, password: string, saveCred
       return { hasCaptcha: false }; // We'll check via Playwright
     }, { pw: password, user: username });
 
-    // Wait for captcha image to load - poll with longer waits
-    for (let i = 0; i < 6; i++) {
-      await page.waitForTimeout(2000);
+    // Wait for captcha image to load - poll with compressed waits
+    for (let i = 0; i < 4; i++) {
+      await page.waitForTimeout(1000);
       // Check if captcha image exists AND has loaded
       const captchaReady = await frame.evaluate(() => {
         const imgs = document.querySelectorAll('img[src*="check_code"], img[src*="captcha"]');
@@ -802,10 +803,13 @@ export async function startLoginRSA(username: string, password: string, saveCred
         return { ready: false };
       });
       if (captchaReady.ready) {
-        console.log(`[RSA Login] Captcha image ready after ${(i + 1) * 2}s:`, captchaReady.src);
+        console.log(`[RSA Login] Captcha image ready after ${(i + 1)}s:`, captchaReady.src);
         const captchaEl = frame.locator('img[src*="check_code"], img[src*="captcha"]').first();
         const buf = await captchaEl.screenshot({ type: "png" });
         if (buf.length > 500) {
+          // Capture full cookie snapshot for cross-context session restoration in verify step
+          const session = pendingLogins.get(sessionId);
+          if (session) session._captchaCookies = await ctx.cookies();
           return { success: false, captcha: buf.toString("base64"), sessionId, error: "请输入验证码" };
         }
       }
@@ -891,6 +895,11 @@ export async function verifyCaptchaRSA(sessionId: string, captchaCode: string): 
       if (!frame) return { success: false, error: "登录会话已过期，请关闭弹窗后重新打开" };
     }
 
+    // Restore captured cookies from login step to preserve captcha session
+    if (session._captchaCookies && session._captchaCookies.length > 0) {
+      await ctx.addCookies(session._captchaCookies);
+    }
+
     // Refresh mode
     if (!captchaCode || captchaCode.trim() === "") {
       try {
@@ -963,8 +972,8 @@ export async function verifyCaptchaRSA(sessionId: string, captchaCode: string): 
     // Poll cookies ONLY (no frame access after _submit — loginSuccess may navigate parent)
     // Also try to read login data from callback
     let loginData: any = null;
-    for (let i = 0; i < 10; i++) {
-      await page.waitForTimeout(2000);
+    for (let i = 0; i < 6; i++) {
+      await page.waitForTimeout(1500);
       try {
         // Check if frame still accessible (may have been detached)
         if (!loginData) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useEffect } from "react";
 import Link from "next/link";
 import type { Thread } from "@/lib/types";
 import { useCacheStore, getCacheKey } from "@/store/cache-store";
@@ -13,15 +13,95 @@ const CARD_TINTS = ["var(--card-cream)", "var(--card-warm)", "var(--card-cream)"
 
 export function ThreadList({ threads, fid }: ThreadListProps) {
   const hoverTimers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const prefetchedRef = useRef(new Set<string>());
+  const pendingPrefetch = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+  // Batch buffer: collect viewport tids → flush every 50ms → single batch request
+  const batchBuffer = useRef<number[]>([]);
+  const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Prefetch both target page and (for tall threads) last page
+  const prefetchPages = useCallback((tid: number, replyCount: number) => {
+    const state = useCacheStore.getState();
+    const page1Key = getCacheKey("thread", tid);
+    if (!state.get(page1Key) && !prefetchedRef.current.has(page1Key)) {
+      prefetchedRef.current.add(page1Key);
+      state.prefetch(`/api/v1/threads/${tid}?page=1`, page1Key);
+    }
+    // Tall thread: also prefetch last page
+    if (replyCount > 20) {
+      const lastPage = Math.min(Math.ceil(replyCount / 20), 5);
+      if (lastPage > 1) {
+        const lastKey = getCacheKey("thread", tid, lastPage);
+        if (!state.get(lastKey) && !prefetchedRef.current.has(lastKey)) {
+          prefetchedRef.current.add(lastKey);
+          state.prefetch(`/api/v1/threads/${tid}?page=${lastPage}`, lastKey);
+        }
+      }
+    }
+  }, []);
+
   const handleMouseEnter = useCallback((thread: Thread) => {
     if (thread.replyCount <= 0) return;
-    const key = getCacheKey("thread", thread.tid);
-    if (useCacheStore.getState().get(key)) return;
-    hoverTimers.current.set(thread.tid, setTimeout(() => useCacheStore.getState().prefetch(`/api/v1/threads/${thread.tid}?page=1`, key), 200));
-  }, []);
+    hoverTimers.current.set(thread.tid, setTimeout(() => {
+      prefetchPages(thread.tid, thread.replyCount);
+    }, 200));
+  }, [prefetchPages]);
   const handleMouseLeave = useCallback((tid: number) => {
     const t = hoverTimers.current.get(tid); if (t) { clearTimeout(t); hoverTimers.current.delete(tid); }
   }, []);
+
+  const flushBatch = useCallback(() => {
+    const buffer = batchBuffer.current;
+    batchBuffer.current = [];
+    if (buffer.length === 0) return;
+    const state = useCacheStore.getState();
+    const clean = [...new Set(buffer)].filter((tid) => {
+      const key = getCacheKey("thread", tid);
+      return !state.get(key) && !state.pendingFetches.has(key);
+    });
+    if (clean.length > 0) state.batchPrefetch(clean, 1);
+  }, []);
+
+  // Viewport-driven prefetch: collect tids → batch flush every 50ms
+  useEffect(() => {
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const tid = parseInt(entry.target.getAttribute("data-tid") || "0");
+          if (!tid) continue;
+
+          if (entry.isIntersecting) {
+            const timer = setTimeout(() => {
+              prefetchPages(tid, 0);
+              pendingPrefetch.current.delete(tid);
+              // Batch: add to buffer, schedule flush
+              batchBuffer.current.push(tid);
+              if (!flushTimer.current) {
+                flushTimer.current = setTimeout(() => {
+                  flushTimer.current = null;
+                  flushBatch();
+                }, 50);
+              }
+            }, 150);
+            pendingPrefetch.current.set(tid, timer);
+          } else {
+            const timer = pendingPrefetch.current.get(tid);
+            if (timer) { clearTimeout(timer); pendingPrefetch.current.delete(tid); }
+          }
+        }
+      },
+      { rootMargin: "0px 0px 200px 0px" }
+    );
+    return () => observerRef.current?.disconnect();
+  }, [prefetchPages, flushBatch]);
+
+  // Observe new cards when threads change
+  useEffect(() => {
+    const obs = observerRef.current;
+    if (!obs) return;
+    document.querySelectorAll("[data-tid]").forEach((el) => obs.observe(el));
+  }, [threads]);
 
   if (threads.length === 0) {
     return (

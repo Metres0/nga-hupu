@@ -10,14 +10,17 @@ export async function GET(
   const piped = pipeline(async (req: Request) => {
     const fid = parseInt(params.fid);
     const page = parseInt(new URL(req.url).searchParams.get("page") || "1");
+    const refresh = new URL(req.url).searchParams.get("refresh") === "1";
     const perPage = 50;
     const offset = (page - 1) * perPage;
 
-    const cached = getCachedThreads(fid, 0, perPage, offset);
-    const totalCount = getCachedThreadCount(fid);
-    const plugin = getPlugin(fid);
+    // Skip cache when user explicitly requests refresh
+    if (!refresh) {
+      const cached = getCachedThreads(fid, 0, perPage, offset);
+      const totalCount = getCachedThreadCount(fid);
+      const plugin = getPlugin(fid);
 
-    if (cached && cached.length > 0) {
+      if (cached && cached.length > 0) {
       const totalPages = Math.max(Math.ceil(totalCount / perPage), 1);
 
       return NextResponse.json(
@@ -36,6 +39,7 @@ export async function GET(
         { headers: { "Cache-Control": "public, max-age=300, stale-while-revalidate=600" } }
       );
     }
+    }
 
     const { dedupedScrape } = await import("@/lib/cache/db");
     const result = await dedupedScrape(
@@ -48,6 +52,30 @@ export async function GET(
         return data;
       }
     );
+
+    // Degraded mode: scraper returned empty → serve stale cache from SQLite
+    if (result.threads.length === 0) {
+      const stale = getCachedThreads(fid, 0, perPage, offset);
+      if (stale && stale.length > 0) {
+        const totalCount = getCachedThreadCount(fid);
+        const plugin = getPlugin(fid);
+        const totalPages = Math.max(Math.ceil(totalCount / perPage), 1);
+        return NextResponse.json(
+          {
+            data: stale.map((row: any) => ({
+              tid: row.tid, title: row.title, author: row.author,
+              createTime: row.create_time, lastReplyTime: row.last_reply_time,
+              replyCount: row.reply_count, sticky: !!row.sticky,
+              digest: !!row.digest, pageCount: row.page_count,
+            })),
+            page, totalPages, hasMore: page < totalPages,
+            forum: plugin || { fid, name: `板块 ${fid}`, subForums: [] },
+            cached: true, degraded: true,
+          },
+          { headers: { "Cache-Control": "public, max-age=60" } }
+        );
+      }
+    }
 
     return NextResponse.json(
       {

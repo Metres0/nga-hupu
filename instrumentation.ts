@@ -65,7 +65,7 @@ export async function register() {
           const { optimizeFtsIndex } = require("@/lib/cache/db");
           optimizeFtsIndex();
         } catch {}
-      }, 15 * 60 * 1000);
+      }, 24 * 60 * 60 * 1000);
 
       setInterval(() => {
         try {

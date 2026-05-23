@@ -30,8 +30,10 @@ export function decrypt(payload: string): string {
 // Invalidated on session change (createSession / deleteSession)
 let _cachedCookies: string | null = null;
 let _cachedSessionId: string | null = null;
+let _cachedVersion: number = 0;
 let _cacheTime: number = 0;
-const CACHE_TTL_MS = 60 * 1000; // 1 minute
+const CACHE_TTL_MS = 5000;
+const CACHE_VERSION_CHECK_MS = 5000;
 
 export interface AuthSession {
   id: string;
@@ -53,7 +55,10 @@ export function createSession(username: string, cookies: string): AuthSession {
   // Invalidate cache: new session written
   _cachedCookies = cookies;
   _cachedSessionId = id;
+  _cachedVersion = Math.floor(now / 1000);
   _cacheTime = now;
+  // Use PRAGMA user_version as cross-process version clock (reads file header, ~0μs)
+  db.exec(`PRAGMA user_version = ${_cachedVersion}`);
   return { id, username, encryptedCookies: encrypted, cookies, createdAt: now, expiresAt };
 }
 
@@ -66,25 +71,28 @@ export function getSession(): AuthSession | null {
 }
 
 export function getDecryptedCookies(): string | null {
+  const now = Date.now();
   // Memory cache: avoid per-request SQLite + AES-GCM overhead
-  if (_cachedCookies !== null && (Date.now() - _cacheTime) < CACHE_TTL_MS) {
-    return _cachedCookies;
+  if (_cachedCookies !== null && (now - _cacheTime) < CACHE_TTL_MS) {
+    // Cross-process version check via PRAGMA user_version (~0μs, reads SQLite file header)
+    if ((now - _cacheTime) >= CACHE_VERSION_CHECK_MS) {
+      const currentVersion = parseInt(String(getDb().pragma("user_version", { simple: true }))) || 0;
+      if (currentVersion !== _cachedVersion) {
+        _cachedCookies = null; _cachedSessionId = null; _cachedVersion = 0;
+      }
+    }
+    if (_cachedCookies !== null) return _cachedCookies;
   }
   const session = getSession();
   if (!session) {
-    _cachedCookies = null;
-    _cachedSessionId = null;
-    _cacheTime = 0;
+    _cachedCookies = null; _cachedSessionId = null;
+    _cachedVersion = 0; _cacheTime = 0;
     return null;
-  }
-  // Validate cache: if session ID changed (auto-renew), refresh
-  if (_cachedSessionId === session.id && _cachedCookies !== null) {
-    _cacheTime = Date.now();
-    return _cachedCookies;
   }
   _cachedCookies = session.cookies;
   _cachedSessionId = session.id;
-  _cacheTime = Date.now();
+  _cachedVersion = Math.floor(now / 1000);
+  _cacheTime = now;
   return _cachedCookies;
 }
 
@@ -95,7 +103,9 @@ export function deleteSession(id?: string): void {
   // Invalidate cache
   _cachedCookies = null;
   _cachedSessionId = null;
+  _cachedVersion = 0;
   _cacheTime = 0;
+  db.exec(`PRAGMA user_version = 0`);
 }
 
 export function isExpiringSoon(thresholdHours: number = 3): boolean {

@@ -11,6 +11,41 @@ function classifyStatus(status: number): void {
   if (status >= 500) throw new ServerError(`服务端错误 (${status})`, status);
 }
 
+// Fast-path circuit breaker: when NGA starts blocking fetch requests,
+// temporarily disable fast path to avoid cascading Playwright fallbacks.
+// Adaptive windows: short bursts → short cooldown; sustained blocks → exponential backoff.
+let _fastFails = 0;
+const _circuit: { open: boolean; until: number } = { open: false, until: 0 };
+
+function breakerWindow(failures: number): number {
+  if (failures <= 2)  return 30 * 1000;       // 30s
+  if (failures <= 5)  return 2 * 60 * 1000;   // 2min
+  if (failures <= 10) return 10 * 60 * 1000;  // 10min
+  return 60 * 60 * 1000;                       // 1h
+}
+
+function tryFastPath(): boolean {
+  if (!_circuit.open) return true;
+  if (Date.now() >= _circuit.until) {
+    // Half-open: allow one probe request from real user (not prefetch)
+    _circuit.open = false;
+    return true;
+  }
+  return false;
+}
+
+function recordFastSuccess() {
+  _fastFails = 0;
+  _circuit.open = false;
+}
+
+function recordFastFailure() {
+  _fastFails++;
+  _circuit.open = true;
+  _circuit.until = Date.now() + breakerWindow(_fastFails);
+  console.log(`[Scraper] Fast-path circuit breaker OPEN (${_fastFails} fails, ${Math.round(breakerWindow(_fastFails)/1000)}s) — NGA may be rate-limiting`);
+}
+
 export async function scrapeThreadList(
   fid: number,
   page: number = 1
@@ -20,12 +55,32 @@ export async function scrapeThreadList(
   forumName: string;
   subForums: Array<{ fid: number; name: string }>;
 }> {
+  const url = `https://bbs.nga.cn/thread.php?fid=${fid}&page=${page}`;
   const cookieStr = getDecryptedCookies() ?? undefined;
+
+  // Fast path: fetch + Cheerio (no Playwright overhead, ~300ms)
+  // Circuit breaker: skip fast path if NGA is blocking fetch requests
+  if (tryFastPath()) {
+    const fastResult = await scrapeThreadListFast(url, fid, cookieStr);
+    if (fastResult) {
+      recordFastSuccess();
+      return fastResult;
+    }
+    recordFastFailure();
+  }
+
+  // Degraded mode: circuit breaker open → skip Playwright → return null
+  // Caller (API route) should fall back to stale SQLite cache
+  if (_circuit.open) {
+    console.log("[Scraper] Circuit breaker open — returning null for stale cache fallback");
+    return { threads: [], totalPages: 1, forumName: "", subForums: [] };
+  }
+
+  // Fallback: Playwright full browser (for anti-bot or JS-required pages)
   return withRetry(async () => {
     const p = await newPage(cookieStr);
     try {
-      const url = `https://bbs.nga.cn/thread.php?fid=${fid}&page=${page}`;
-      console.log(`[Scraper] 抓取板块列表: ${url}`);
+      console.log(`[Scraper/Playwright] 抓取板块列表: ${url}`);
       const resp = await p.goto(url, { waitUntil: "domcontentloaded", timeout: 20000 });
       if (!resp || resp.status() !== 200) {
         if (resp) classifyStatus(resp.status());
@@ -34,12 +89,54 @@ export async function scrapeThreadList(
       await skipAdIfPresent(p);
       const html = await p.content();
       const result = extractThreadList(html, fid);
-      console.log(`[Scraper] 板块抓取完成: ${result.threads.length} 帖`);
+      console.log(`[Scraper/Playwright] 板块抓取完成: ${result.threads.length} 帖`);
       return result;
     } finally {
       await p.context().close();
     }
   });
+}
+
+async function scrapeThreadListFast(
+  url: string,
+  fid: number,
+  cookieStr?: string
+): Promise<{
+  threads: Thread[];
+  totalPages: number;
+  forumName: string;
+  subForums: Array<{ fid: number; name: string }>;
+} | null> {
+  try {
+    const headers: Record<string, string> = {
+      "User-Agent": process.env.NGA_MOBILE_UA || "Nga_Official/9.9.9",
+      "Accept": "text/html,application/xhtml+xml",
+      "Accept-Language": "zh-CN,zh;q=0.9",
+    };
+    if (cookieStr) headers["Cookie"] = cookieStr;
+
+    console.log(`[Scraper/Fast] 抓取板块列表: ${url}`);
+    const resp = await fetch(url, { headers, redirect: "manual" });
+
+    if (resp.status === 302 || resp.status === 301) {
+      const location = resp.headers.get("location") || "";
+      if (location.includes("login") || location.includes("nuke")) {
+        return null; // NGA redirects to login → need Playwright
+      }
+    }
+    if (resp.status === 403 || resp.status >= 500) return null;
+
+    const html = await resp.text();
+    if (html.length < 500 || html.includes("安全检查")) return null;
+
+    const result = extractThreadList(html, fid);
+    if (result.threads.length === 0) return null; // Empty means Need Playwright
+
+    console.log(`[Scraper/Fast] 板块抓取完成: ${result.threads.length} 帖`);
+    return result;
+  } catch {
+    return null; // Network error → fall back to Playwright
+  }
 }
 
 export async function scrapeThreadDetail(

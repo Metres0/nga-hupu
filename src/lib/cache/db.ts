@@ -51,17 +51,15 @@ export function releaseScrapeLock(key: string): void {
 
 function withWriteRetry<T>(fn: () => T, maxRetries: number = 5): T {
   const baseDelay = 500;
-  // 初始随机 jitter: 多进程不锁定在同一 OS tick 竞争
-  const initialJitter = Math.floor(Math.random() * 200);
-  const jitterEnd = Date.now() + initialJitter;
-  while (Date.now() < jitterEnd) { /* busy-wait: 错开写入到达时间 */ }
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       return fn();
     } catch (e: any) {
       if (attempt === maxRetries) throw e;
       if (e.code === "SQLITE_BUSY") {
-        const delay = Math.floor(baseDelay * Math.pow(2, attempt) + Math.random() * 200);
+        // Retry-only jitter: first attempt is zero-delay, subsequent retries have 0-50ms jitter
+        const jitter = attempt === 0 ? 0 : Math.floor(Math.random() * 50);
+        const delay = Math.floor(Math.random() * baseDelay * Math.pow(2, attempt)) + jitter;
         const end = Date.now() + delay;
         while (Date.now() < end) { /* busy-wait: 等待 WAL 写入完成 */ }
       } else {
@@ -145,6 +143,19 @@ function initSchema(database: Database.Database) {
     CREATE VIRTUAL TABLE IF NOT EXISTS posts_fts USING fts5(
       content, content='posts', content_rowid='id'
     );
+
+    CREATE TRIGGER IF NOT EXISTS posts_ai AFTER INSERT ON posts BEGIN
+      INSERT INTO posts_fts(rowid, content) VALUES (new.id, new.content);
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS posts_ad AFTER DELETE ON posts BEGIN
+      INSERT INTO posts_fts(posts_fts, rowid, content) VALUES('delete', old.id, old.content);
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS posts_au AFTER UPDATE ON posts BEGIN
+      INSERT INTO posts_fts(posts_fts, rowid, content) VALUES('delete', old.id, old.content);
+      INSERT INTO posts_fts(rowid, content) VALUES (new.id, new.content);
+    END;
 
     CREATE TABLE IF NOT EXISTS auth_sessions (
       id TEXT PRIMARY KEY,

@@ -14,6 +14,7 @@ interface CacheState {
   get: <T>(key: string) => { data: T; stale: boolean } | null;
   set: <T>(key: string, data: T) => void;
   prefetch: <T>(url: string, key: string, priority?: number) => Promise<T | null>;
+  batchPrefetch: (tids: number[], page?: number) => Promise<void>;
   pin: (key: string) => void;
   unpin: (key: string) => void;
   clear: () => void;
@@ -68,6 +69,38 @@ export const useCacheStore = create<CacheState>((set, get) => ({
       .finally(() => { state.pendingFetches.delete(key); });
     state.pendingFetches.set(key, promise);
     return promise;
+  },
+
+  batchPrefetch: async (tids: number[], page: number = 1): Promise<void> => {
+    const state = get();
+    // Filter out already cached or in-flight tids
+    const clean = [...new Set(tids)].filter((tid) => {
+      const key = `thread:${tid}:${page}`;
+      return !state.get(key) && !state.pendingFetches.has(key);
+    });
+    if (clean.length === 0) return;
+
+    const CHUNK_SIZE = 8;
+    for (let i = 0; i < clean.length; i += CHUNK_SIZE) {
+      const chunk = clean.slice(i, i + CHUNK_SIZE);
+      const batchKey = `batch:${chunk.join(",")}:${page}`;
+      if (state.pendingFetches.has(batchKey)) continue;
+
+      const promise = fetch(`/api/v1/batch/threads?tids=${chunk.join(",")}&page=${page}`)
+        .then((res) => { if (!res.ok) throw new Error("batch failed"); return res.json(); })
+        .then((json) => {
+          if (json.threads) {
+            for (const [tidStr, data] of Object.entries(json.threads)) {
+              const key = `thread:${parseInt(tidStr)}:${page}`;
+              if (data) state.set(key, data);
+            }
+          }
+        })
+        .catch(() => {})
+        .finally(() => { state.pendingFetches.delete(batchKey); });
+
+      state.pendingFetches.set(batchKey, promise);
+    }
   },
 
   pin: (key: string) => { get().pinnedKeys.add(key); },
