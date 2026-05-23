@@ -203,9 +203,7 @@ export default function ThreadPageClient({ tid: propTid, fid: propFid, page: pro
                 <PostCard post={post} isFirst={post.floor === 0 && depth === 0} allPosts={store.posts} depth={depth} />
               </div>
             ))}
-            {openPid !== null && (
-              <ReplyForm tid={tid} pid={openPid} replyToAuthor={store.posts.find((p: any) => p.pid === openPid)?.author} />
-            )}
+            {/* ReplyForm is a modal dialog triggered via reply-store, not inline */}
           </div>
         )}
 
@@ -236,6 +234,9 @@ export default function ThreadPageClient({ tid: propTid, fid: propFid, page: pro
           <Link href={`/forum/${fid}`} className="no-underline"><GlassButton variant="ghost" size="sm">返回板块</GlassButton></Link>
         </div>
       </div>
+      {openPid !== null && (
+        <ReplyForm tid={tid} pid={openPid} replyToAuthor={store.posts.find((p: any) => p.pid === openPid)?.author} />
+      )}
     </div>
   );
 }

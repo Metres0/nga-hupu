@@ -22,24 +22,28 @@ export default function ReplyForm({ tid, pid, replyToAuthor }: ReplyFormProps) {
 
   if (!loggedIn) {
     return (
-      <div className="glass-card rounded-2xl p-4 mb-3">
-        <p className="text-sm text-[var(--text-secondary)] mb-2">请先登录后再回复</p>
-        <button onClick={openLoginDialog}
-          className="px-4 py-1.5 rounded-xl bg-[var(--md-primary)] text-[var(--md-on-primary)] text-xs font-semibold">
-          登录 NGA
-        </button>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.4)] backdrop-blur-sm" onClick={closeReply}>
+        <div className="glass-card-elevated rounded-3xl p-6 shadow-modal text-center" onClick={(e) => e.stopPropagation()}>
+          <p className="text-sm text-[var(--text-secondary)] mb-2">请先登录后再回复</p>
+          <button onClick={openLoginDialog}
+            className="px-4 py-1.5 rounded-xl bg-[var(--md-primary)] text-[var(--md-on-primary)] text-xs font-semibold">
+            登录 NGA
+          </button>
+        </div>
       </div>
     );
   }
 
   if (success) {
     return (
-      <div className="glass-card rounded-2xl p-4 mb-3 text-center">
-        <span className="text-emerald-500 text-sm">回复已提交</span>
-        <button onClick={() => { closeReply(); setSuccess(false); setContent(""); }}
-          className="ml-3 text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)]">
-          关闭
-        </button>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.4)] backdrop-blur-sm" onClick={closeReply}>
+        <div className="glass-card-elevated rounded-3xl p-6 shadow-modal text-center" onClick={(e) => e.stopPropagation()}>
+          <span className="text-emerald-500 text-sm">回复已提交</span>
+          <button onClick={() => { closeReply(); setSuccess(false); setContent(""); }}
+            className="ml-3 text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)]">
+            关闭
+          </button>
+        </div>
       </div>
     );
   }
@@ -74,15 +78,14 @@ export default function ReplyForm({ tid, pid, replyToAuthor }: ReplyFormProps) {
   const btnBase = "px-2 py-0.5 text-[10px] rounded border border-[var(--border-default)] text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)] transition-colors";
 
   return (
-    <div className="glass-card rounded-2xl p-4 mb-3">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-sm font-semibold text-[var(--text-primary)]">
-          {replyToAuthor ? `回复 @${replyToAuthor}` : "发表回复"}
-        </span>
-        <button onClick={closeReply} className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] text-sm">
-          ✕
-        </button>
-      </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.4)] backdrop-blur-sm" onClick={closeReply}>
+      <div className="w-full max-w-lg mx-4 glass-card-elevated rounded-3xl p-6 shadow-modal max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm font-semibold text-[var(--text-primary)]">
+            {replyToAuthor ? `回复 @${replyToAuthor}` : "发表回复"}
+          </span>
+          <button onClick={closeReply} className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] text-lg leading-none">✕</button>
+        </div>
 
       <input type="text" value={subject} onChange={(e) => setSubject(e.target.value)}
         placeholder="标题 (可选)" className="glass-input w-full px-3 py-1.5 rounded-lg text-xs mb-2" />
@@ -117,6 +120,7 @@ export default function ReplyForm({ tid, pid, replyToAuthor }: ReplyFormProps) {
           取消
         </button>
       </div>
+    </div>
     </div>
   );
 }
