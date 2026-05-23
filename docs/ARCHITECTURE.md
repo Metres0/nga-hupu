@@ -142,6 +142,16 @@ src/
 | **写锁前置 jitter** | `withWriteRetry` initial 0-200ms | fcntl 非 FIFO 长尾饥饿 |
 | **进程组杀灭** | `process.kill(-pid, signal)` | Chrome 孙子进程孤儿残留 |
 
+### 交互功能 (v5.8)
+
+| 机制 | 位置 | 说明 |
+|------|------|------|
+| **回复帖子** | `ReplyForm.tsx` + `engine.ts` | BBCode 编辑器 + Playwright 仿真提交 |
+| **点赞/点踩** | `PostCard.tsx` + `engine.ts` | 乐观更新 + NGA 投票 |
+| **收藏NGA原帖** | `FavoritesDialog.tsx` + `favorites/page.tsx` | 链接指向 bbs.nga.cn |
+| **视口预取** | `ThreadList.tsx` | IntersectionObserver + batch API |
+| **同步 SSR 注入** | `ForumPageClient.tsx` | useRef 渲染期注入 (TTI 0ms) |
+
 ### 边缘防御 (v4.6)
 
 | 机制 | 位置 | 解决风险 |
