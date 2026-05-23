@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { scrapeReplyToPost } from "@/lib/scraper/engine";
-import { pipeline } from "@/lib/middleware/pipeline";
 
 export const dynamic = "force-dynamic";
 
@@ -8,9 +7,9 @@ export async function POST(
   request: NextRequest,
   { params }: { params: { tid: string } }
 ) {
-  const piped = pipeline(async (req: Request) => {
+  try {
     const tid = parseInt(params.tid);
-    const body = await req.json().catch(() => ({}));
+    const body = await request.json().catch(() => ({}));
     const { pid = 0, fid = 0, content, subject } = body;
 
     if (!content || typeof content !== "string" || content.trim().length < 2) {
@@ -21,11 +20,9 @@ export async function POST(
     }
 
     const result = await scrapeReplyToPost(tid, fid, pid, content.trim(), subject?.trim() || undefined);
-    if (result.success) {
-      return NextResponse.json({ success: true });
-    }
+    if (result.success) return NextResponse.json({ success: true, replyTime: Date.now() });
     return NextResponse.json({ success: false, error: result.error }, { status: 500 });
-  });
-
-  return piped(request);
+  } catch (err) {
+    return NextResponse.json({ success: false, error: (err as Error).message }, { status: 500 });
+  }
 }
