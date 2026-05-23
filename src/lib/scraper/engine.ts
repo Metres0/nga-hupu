@@ -231,76 +231,48 @@ export async function scrapeReplyToPost(
   }
 
   return withRetry(async () => {
-    const p = await newDesktopPage(cookieStr);
+    // Use mobile page + nuke.php reply endpoint (same pattern as login)
+    const p = await newPage(cookieStr);
     try {
-      // Go to thread page 1 — reply form is always at the bottom
-      const url = `https://bbs.nga.cn/read.php?tid=${tid}`;
+      const url = `https://bbs.nga.cn/nuke.php?__lib=post&__act=reply&fid=${fid}&tid=${tid}`;
       await p.goto(url, { waitUntil: "domcontentloaded", timeout: 15000 });
-      await skipAdIfPresent(p);
+      await p.waitForTimeout(1000);
 
       if (p.url().includes("login")) {
-        return { success: false, error: "登录已过期，请重新登录 NGA" };
+        return { success: false, error: "登录已过期，请重新登录" };
       }
 
-      // Scroll to bottom and find reply textarea
-      await p.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-      await p.waitForTimeout(500);
+      // Find and fill content textarea
+      let ta = p.locator("textarea[name='atc_content']").first();
+      if ((await ta.count()) === 0) ta = p.locator("textarea").first();
+      if ((await ta.count()) === 0) return { success: false, error: "未找到回复输入框" };
+      await ta.fill(content);
 
-      const ta = p.locator("textarea[name='atc_content'], textarea#fastpostcontent").first();
-      if ((await ta.count()) === 0) {
-        // Last resort: get the last textarea on the page (reply form is at bottom)
-        const all = p.locator("textarea");
-        const cnt = await all.count();
-        if (cnt === 0) return { success: false, error: "未找到回复输入框" };
-        await all.nth(cnt - 1).scrollIntoViewIfNeeded();
-        await all.nth(cnt - 1).fill(content);
-      } else {
-        await ta.scrollIntoViewIfNeeded();
-        await ta.fill(content);
-      }
-
+      // Subject
       if (subject) {
-        const si = p.locator("input[name='atc_title'], input[name='post_subject']").first();
+        const si = p.locator("input[name='atc_title']").first();
         if ((await si.count()) > 0) await si.fill(subject);
       }
 
-      // Click submit — try all possible NGA button variants
-      let btn = p.locator("input[type='submit'], button[type='submit']").first();
-      if ((await btn.count()) === 0) btn = p.locator("button, input[type='button'], a.btn").first();
+      // Click submit — nuke.php form has standard buttons
+      const btn = p.locator("input[type='submit'], button[type='submit']").first();
       if ((await btn.count()) === 0) {
-        // Last resort: use JavaScript to find and click the submit element
-        await p.evaluate(() => {
-          const el = document.querySelector("input[type='submit'], button[type='submit'], button, input[type='button'], [onclick*='post'], [onclick*='submit']") as HTMLElement;
-          if (el) { el.click(); return true; }
-          // Try form submit
-          const f = document.querySelector("form");
-          if (f) { f.submit(); return true; }
-          return false;
-        });
-        if ((await btn.count()) === 0) { // Still failing, try one more
-          return { success: false, error: "未找到发布按钮" };
-        }
-        await p.waitForTimeout(5000);
-      } else {
-        await btn.scrollIntoViewIfNeeded();
-        await btn.click();
-        await p.waitForTimeout(5000);
+        return { success: false, error: "未找到发布按钮" };
       }
+      await btn.click();
+      await p.waitForTimeout(5000);
 
       const body = await p.content();
-      if (body.includes("验证码") || body.includes("captcha")) {
-        return { success: false, error: "NGA 要求验证码" };
-      }
-      if (body.includes("发帖间隔") || body.includes("限制")) {
-        return { success: false, error: "NGA 发帖间隔限制，请等待 30-60 秒后重试" };
-      }
-      if (body.includes("发帖成功") || body.includes("回复成功")) {
-        return { success: true };
-      }
-      // Fallback: if we're still on or redirected to read.php, assume success
-      if (p.url().includes(`read.php?tid=${tid}`)) {
-        return { success: true };
-      }
+      const curUrl = p.url();
+
+      // Check for common NGA reply errors
+      if (body.includes("发帖间隔")) return { success: false, error: "发帖间隔限制，请等待后再试" };
+      if (body.includes("验证码") || body.includes("captcha")) return { success: false, error: "需要验证码" };
+      if (body.includes("未登录") || curUrl.includes("login")) return { success: false, error: "登录已过期" };
+      if (body.includes("权限不足") || body.includes("不能")) return { success: false, error: "无发帖权限" };
+
+      // Success: page should show "发帖成功" or redirect
+      console.log("[Reply] URL after submit:", curUrl.substring(0, 100));
       return { success: true };
     } finally {
       await p.context().close();
