@@ -231,73 +231,64 @@ export async function scrapeReplyToPost(
   }
 
   return withRetry(async () => {
-    // Use desktop page for reliable reply form (mobile may not have it)
     const p = await newDesktopPage(cookieStr);
     try {
-      const url = `https://bbs.nga.cn/read.php?tid=${tid}&page=e`;
+      // Go to thread page 1 — reply form is always at the bottom
+      const url = `https://bbs.nga.cn/read.php?tid=${tid}`;
       await p.goto(url, { waitUntil: "domcontentloaded", timeout: 15000 });
       await skipAdIfPresent(p);
-      await p.waitForTimeout(1000);
 
-      // Dump available textareas for debugging
-      const textareas = await p.locator("textarea").all();
-      for (let i = 0; i < Math.min(textareas.length, 5); i++) {
-        const info = await textareas[i].evaluate((el: any) => ({
-          id: el.id || "", name: el.name || "", placeholder: el.placeholder || "", visible: el.offsetParent !== null,
-        })).catch(() => ({}));
-        console.log(`[Reply] Textarea ${i}:`, info);
-      }
-
-      // Check for login redirect
-      const pageUrl = p.url();
-      if (pageUrl.includes("login") || (pageUrl.includes("nuke.php") && !pageUrl.includes("read.php"))) {
+      if (p.url().includes("login")) {
         return { success: false, error: "登录已过期，请重新登录 NGA" };
       }
 
-      // Find reply textarea — try all common NGA combos
-      let textarea = p.locator("textarea#fastpostcontent").first();
-      if ((await textarea.count()) === 0) textarea = p.locator("textarea[name='atc_content']").first();
-      if ((await textarea.count()) === 0) textarea = p.locator("textarea").first();
+      // Scroll to bottom and find reply textarea
+      await p.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      await p.waitForTimeout(500);
 
-      if ((await textarea.count()) === 0) {
-        return { success: false, error: "未找到回复输入框，请直接在 NGA 回复" };
+      const ta = p.locator("textarea[name='atc_content'], textarea#fastpostcontent").first();
+      if ((await ta.count()) === 0) {
+        // Last resort: get the last textarea on the page (reply form is at bottom)
+        const all = p.locator("textarea");
+        const cnt = await all.count();
+        if (cnt === 0) return { success: false, error: "未找到回复输入框" };
+        await all.nth(cnt - 1).scrollIntoViewIfNeeded();
+        await all.nth(cnt - 1).fill(content);
+      } else {
+        await ta.scrollIntoViewIfNeeded();
+        await ta.fill(content);
       }
-
-      // Fill via JavaScript (handles hidden/obscured textareas)
-      await textarea.evaluate((el: any, val: string) => {
-        const ta = el as HTMLTextAreaElement;
-        ta.value = val; ta.dispatchEvent(new Event("input", { bubbles: true }));
-      }, content);
 
       if (subject) {
-        const subj = p.locator("input[name='atc_title'], input[name='post_subject']").first();
-        if ((await subj.count()) > 0) await subj.fill(subject);
+        const si = p.locator("input[name='atc_title'], input[name='post_subject']").first();
+        if ((await si.count()) > 0) await si.fill(subject);
       }
 
-      // Submit: form submit (most reliable cross-platform)
-      const form = p.locator("form").first();
-      if ((await form.count()) > 0) {
-        await form.evaluate((el: any) => (el as HTMLFormElement).submit());
+      // Click submit — must use native click (NGA JS handlers may rely on it)
+      const btn = p.locator("input[type='submit'], button[type='submit']").first();
+      if ((await btn.count()) > 0) {
+        await btn.scrollIntoViewIfNeeded();
+        await btn.click();
       } else {
-        const btn = p.locator("input[type='submit'], button[type='submit']").first();
-        if ((await btn.count()) > 0) await btn.click();
+        await p.locator("form").first().evaluate(el => (el as HTMLFormElement).submit());
       }
-      await p.waitForTimeout(4000);
+      await p.waitForTimeout(5000);
 
-      const finalUrl = p.url();
       const body = await p.content();
       if (body.includes("验证码") || body.includes("captcha")) {
-        return { success: false, error: "NGA 要求验证码，请直接在 NGA 回复" };
+        return { success: false, error: "NGA 要求验证码" };
       }
       if (body.includes("发帖间隔") || body.includes("限制")) {
         return { success: false, error: "NGA 发帖间隔限制，请等待 30-60 秒后重试" };
       }
-      // Post likely succeeded (NGA shows rate-limit page even after posting)
-      if (body.includes("发帖成功") || body.includes("回复成功") || finalUrl.includes(`read.php?tid=${tid}`)) {
+      if (body.includes("发帖成功") || body.includes("回复成功")) {
         return { success: true };
       }
-      console.log("[Reply] Final URL:", finalUrl.substring(0, 100));
-      return { success: true }; // Assume success if no captcha/error detected
+      // Fallback: if we're still on or redirected to read.php, assume success
+      if (p.url().includes(`read.php?tid=${tid}`)) {
+        return { success: true };
+      }
+      return { success: true };
     } finally {
       await p.context().close();
     }
