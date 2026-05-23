@@ -264,14 +264,13 @@ export async function scrapeReplyToPost(
         if ((await si.count()) > 0) await si.fill(subject);
       }
 
-      // Click submit — must use native click (NGA JS handlers may rely on it)
+      // Click submit
       const btn = p.locator("input[type='submit'], button[type='submit']").first();
-      if ((await btn.count()) > 0) {
-        await btn.scrollIntoViewIfNeeded();
-        await btn.click();
-      } else {
-        await p.locator("form").first().evaluate(el => (el as HTMLFormElement).submit());
+      if ((await btn.count()) === 0) {
+        return { success: false, error: "未找到发布按钮" };
       }
+      await btn.scrollIntoViewIfNeeded();
+      await btn.click();
       await p.waitForTimeout(5000);
 
       const body = await p.content();
