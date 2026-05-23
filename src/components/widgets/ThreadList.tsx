@@ -113,7 +113,7 @@ export function ThreadList({ threads, fid }: ThreadListProps) {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+    <div className="grid grid-cols-1 gap-3">
       {threads.map((thread, idx) => {
         const read = isRead(thread.tid);
         const faved = useFavoriteStore.getState().isThreadFavorited(thread.tid);

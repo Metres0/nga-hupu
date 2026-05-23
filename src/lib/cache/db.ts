@@ -210,14 +210,43 @@ export function getCachedPosts(tid: number, maxAge: number = 300000, page: numbe
   const database = getDb();
   const rows = database
     .prepare(`SELECT * FROM posts WHERE tid = ? AND page = ? ORDER BY floor ASC`)
-    .all(tid, page);
+    .all(tid, page) as any[];
   if (rows.length === 0) return null;
+  // Inline cleanup: strip NGA JavaScript residue from stored content
+  for (const row of rows) {
+    if (row.content_html && (row.content_html.includes("ubbcode.attach") || row.content_html.includes("commonui."))) {
+      row.content_html = cleanStoredHtml(row.content_html);
+    }
+  }
   if (maxAge <= 0) return rows;
   const threadRow = database
     .prepare(`SELECT * FROM threads WHERE tid = ?`)
     .get(tid) as any;
   if (threadRow && threadRow.updated_at < Date.now() - maxAge) return null;
   return rows;
+}
+
+function cleanStoredHtml(html: string): string {
+  const startTag = "ubbcode.attach.load(";
+  let idx = html.indexOf(startTag);
+  while (idx !== -1) {
+    let depth = 0, end = idx + startTag.length;
+    for (; end < html.length; end++) {
+      if (html[end] === "(") depth++;
+      if (html[end] === ")") { if (depth === 0) break; depth--; }
+    }
+    if (end < html.length && html[end] === ")") {
+      let after = end + 1;
+      while (after < html.length && (html[after] === " " || html[after] === ";")) after++;
+      html = html.substring(0, idx) + html.substring(after);
+    } else break;
+    idx = html.indexOf(startTag);
+  }
+  html = html.replace(/显示全部附件/g, "");
+  html = html.replace(/commonui\.\w+\s*\([^)]*\)\s*;?/g, "");
+  html = html.replace(/改动在\d{4}-\d{2}-\d{2}\s*\d{2}:\d{2}修改/g, "");
+  html = html.replace(/#\d+\s+\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s+\d+/g, "");
+  return html;
 }
 
 export function getThreadPageInfo(tid: number): {

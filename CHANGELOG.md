@@ -1,5 +1,23 @@
 # Changelog
 
+## v5.7 (2026-05-23) — Auth & Layout Fix
+
+### Fixed
+
+- **SSR 登录检测错误**: SSR 页面 `cookies()` (浏览器 Cookie) → `getSession()` (SQLite session)。NGA Cookie 存储在服务端 SQLite，浏览器从未持有。修复后登录用户访问晴风村等受限板块 SSR 正确放行
+  - `forum/[fid]/page.tsx`: import `getSession` 替代 `cookies`
+  - `forum/[fid]/thread/[tid]/page.tsx`: 同上
+- **帖子列表布局**: 桌面双列 `lg:grid-cols-2` → 全局单列 `grid-cols-1`
+  - `ThreadList.tsx:116`: 删除 `lg:grid-cols-2`
+
+### Changed
+
+- `forum/[fid]/page.tsx`: 登录检测改用 `getSession()`
+- `forum/[fid]/thread/[tid]/page.tsx`: 同上
+- `ThreadList.tsx`: 列表改为单列
+
+---
+
 ## v5.6 (2026-05-23) — Defense Conflict Resolution
 
 ### Fixed (4 Layer Collision Risks)

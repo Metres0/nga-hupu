@@ -2,16 +2,15 @@ import { getCachedThreads, getCachedThreadCount } from "@/lib/cache/db";
 import { getPlugin } from "@/plugins/registry";
 import ForumPageClient from "@/components/widgets/ForumPageClient";
 import AuthGate from "@/components/widgets/AuthGate";
-import { cookies } from "next/headers";
+import { getSession } from "@/lib/auth/session-store";
 
 export const dynamic = "force-dynamic";
 
 export default async function ForumPage({ params }: { params: { fid: string } }) {
   const fid = parseInt(params.fid);
   const plugin = getPlugin(fid);
-  const cookieStore = cookies();
-  const uidCookie = cookieStore.get("ngaPassportUid");
-  const isLoggedIn = !!(uidCookie && uidCookie.value && uidCookie.value !== "guest");
+  const session = getSession();
+  const isLoggedIn = !!(session && session.expiresAt > Date.now());
 
   if (plugin?.requiresLogin && !isLoggedIn) {
     return <AuthGate fid={fid} forumName={plugin?.name} />;

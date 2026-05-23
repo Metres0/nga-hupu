@@ -345,10 +345,37 @@ export function extractAttachmentsFromRaw(raw: string): string[] {
  * Clean up attachment JavaScript and button text from content for display.
  */
 export function cleanAttachmentsFromHtml(html: string): string {
-  // Remove ubbcode.attach.load() calls
-  html = html.replace(/ubbcode\.attach\.load\([^)]+\)/g, "");
+  // Remove ubbcode.attach.load() calls using balanced parenthesis matching
+  const startTag = 'ubbcode.attach.load(';
+  let idx = html.indexOf(startTag);
+  while (idx !== -1) {
+    let depth = 0;
+    let end = idx + startTag.length;
+    for (; end < html.length; end++) {
+      if (html[end] === '(') depth++;
+      if (html[end] === ')') {
+        if (depth === 0) break;
+        depth--;
+      }
+    }
+    if (end < html.length && html[end] === ')') {
+      let after = end + 1;
+      while (after < html.length && (html[after] === ' ' || html[after] === ';')) after++;
+      html = html.substring(0, idx) + html.substring(after);
+    } else {
+      break;
+    }
+    idx = html.indexOf(startTag);
+  }
   // Remove "显示全部附件" text
   html = html.replace(/显示全部附件/g, "");
+  // Remove NGA UI JavaScript functions (commonui.*)
+  html = html.replace(/commonui\.\w+\s*\([^)]*\)/g, "");
+  html = html.replace(/commonui\.\w+\s*\([^)]*\)\s*;/g, "");
+  // Remove edit history text
+  html = html.replace(/改动在\d{4}-\d{2}-\d{2}\s*\d{2}:\d{2}修改/g, "");
+  // Remove orphaned post metadata (#pid YYYY-MM-DD HH:MM count)
+  html = html.replace(/#\d+\s+\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s+\d+/g, "");
   // Clean up orphaned commas/semicolons/quotes
   html = html.replace(/\s*,\s*,/g, "").replace(/\s*'\s*,?\s*'/g, "").replace(/,\s*$/gm, "");
   return html;
