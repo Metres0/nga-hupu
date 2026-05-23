@@ -266,20 +266,29 @@ export async function scrapeReplyToPost(
         el.dispatchEvent(new Event("change", { bubbles: true }));
       });
 
-      // Submit: find button near the textarea (inside same form or sibling)
-      // Prefer buttons with text "发" or "回" to avoid hitting nav buttons
-      const btn = p.locator([
-        'input[type="submit"][value*="发"]',
-        'input[type="submit"][value*="回"]',
-        'button:has-text("发"):not(:has-text("发送"))',
-        'button[type="submit"]',
-        'input[type="submit"]',
-      ].join(", ")).first();
-      if ((await btn.count()) > 0) {
-        await btn.click();
-      } else {
-        return { success: false, error: "未找到发布按钮" };
-      }
+      // Submit via JavaScript — zero-selector: find form and submit directly
+      const submitted = await p.evaluate(() => {
+        // Priority 1: closest form ancestor of textarea
+        const ta = document.querySelector("textarea") as HTMLTextAreaElement;
+        const form = ta?.closest("form") as HTMLFormElement;
+        if (form) { form.submit(); return true; }
+        // Priority 2: any form on page
+        const anyForm = document.querySelector("form") as HTMLFormElement;
+        if (anyForm) { anyForm.submit(); return true; }
+        // Priority 3: any submit button or button with "发"/"回"/"提" text
+        const btns = document.querySelectorAll("input[type='submit'], button[type='submit'], button");
+        for (const b of btns) {
+          const el = b as HTMLElement;
+          const text = (el.textContent || "").replace(/\s/g, "");
+          const val = (el as HTMLInputElement).value || "";
+          if (text.includes("发") || text.includes("回") || text.includes("提") ||
+              val.includes("发") || val.includes("回") || val.includes("提")) {
+            el.click(); return true;
+          }
+        }
+        return false;
+      });
+      if (!submitted) return { success: false, error: "未找到发布方式，请在原始网页回复" };
 
       // Wait for navigation after post — NGA redirects to thread page on success
       try {
