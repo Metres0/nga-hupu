@@ -290,14 +290,14 @@ export async function scrapeReplyToPost(
         return { success: false, error: "NGA 要求验证码，请直接在 NGA 回复" };
       }
       if (body.includes("发帖间隔") || body.includes("限制")) {
-        return { success: false, error: "NGA 发帖间隔限制，请稍后重试" };
+        return { success: false, error: "NGA 发帖间隔限制，请等待 30-60 秒后重试" };
       }
-      // Success: URL likely redirects back to thread (read.php)
-      if (finalUrl.includes(`read.php?tid=${tid}`)) {
+      // Post likely succeeded (NGA shows rate-limit page even after posting)
+      if (body.includes("发帖成功") || body.includes("回复成功") || finalUrl.includes(`read.php?tid=${tid}`)) {
         return { success: true };
       }
       console.log("[Reply] Final URL:", finalUrl.substring(0, 100));
-      return { success: true }; // Assume success if no error detected
+      return { success: true }; // Assume success if no captcha/error detected
     } finally {
       await p.context().close();
     }
